@@ -1,0 +1,54 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@components": [
+        "./components"
+      ],
+      "@screens": [
+        "./screens"
+      ],
+      "@services": [
+        "./services"
+      ],
+      "@theme": [
+        "./theme"
+      ],
+      "@types": [
+        "./types"
+      ],
+      "@navigation": [
+        "./navigation"
+      ]
+    }
+  },
+  "include": [
+    "App.tsx",
+    "index.js",
+    "types/**/*.ts",
+    "services/**/*.ts",
+    "screens/**/*.tsx",
+    "navigation/**/*.tsx",
+    "components/**/*.tsx",
+    "theme/**/*.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".expo"
+  ]
+}
