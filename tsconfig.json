@@ -1,54 +1,41 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
-    "esModuleInterop": true,
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
     "skipLibCheck": true,
-    "declaration": false,
+    "strict": true,
     "noEmit": true,
-    "forceConsistentCasingInFileNames": true,
-    "typeRoots": [
-      "./node_modules/@types"
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
     ],
     "paths": {
       "@/*": [
-        "./*"
-      ],
-      "@components": [
-        "./components"
-      ],
-      "@screens": [
-        "./screens"
-      ],
-      "@services": [
-        "./services"
-      ],
-      "@theme": [
-        "./theme"
-      ],
-      "@types": [
-        "./types"
-      ],
-      "@navigation": [
-        "./navigation"
+        "./src/*"
       ]
-    }
+    },
+    "target": "ES2017"
   },
   "include": [
-    "App.tsx",
-    "index.js",
-    "types/**/*.ts",
-    "services/**/*.ts",
-    "screens/**/*.tsx",
-    "navigation/**/*.tsx",
-    "components/**/*.tsx",
-    "theme/**/*.ts",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "dist",
-    ".expo"
+    "node_modules"
   ]
 }

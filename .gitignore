@@ -1,44 +1,30 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Next.js
+.next/
+out/
 
-# dependencies
+# Dependencies
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# Env files
+.env.local
+.env.*.local
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
+# Debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# Misc
 .DS_Store
 *.pem
 
-# local env files
-.env
-.env*.local
+# Vercel
+.vercel
 
-# typescript
+# TypeScript
 *.tsbuildinfo
+next-env.d.ts
 
-app-example
-
-# generated native folders
-/ios
-/android
+# Persistent data (user accounts, datasets)
+data/
+.env*.local
