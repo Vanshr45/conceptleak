@@ -12,7 +12,33 @@ async function callAI(prompt: string): Promise<string | null> {
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
 
-  // Try OpenRouter first if key is available
+  // Try Gemini first — fast, free, and reliable
+  if (geminiKey) {
+    const models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
+    for (const model of models) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+            }),
+          }
+        );
+        if (!res.ok) { console.error(`Gemini ${model} failed (${res.status})`); continue; }
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text;
+      } catch (err) {
+        console.error(`Gemini ${model} threw:`, err);
+      }
+    }
+  }
+
+  // Fallback: OpenRouter (free tier, slower)
   if (openRouterKey) {
     const models = [
       "openai/gpt-oss-20b:free",
@@ -50,32 +76,6 @@ async function callAI(prompt: string): Promise<string | null> {
         console.error(`OpenRouter model ${model} returned empty:`, JSON.stringify(data));
       } catch (err) {
         console.error(`OpenRouter model ${model} threw:`, err);
-      }
-    }
-  }
-
-  // Fallback: try Gemini if key exists
-  if (geminiKey) {
-    const models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
-    for (const model of models) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
-            }),
-          }
-        );
-        if (!res.ok) { console.error(`Gemini ${model} failed (${res.status})`); continue; }
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text;
-      } catch (err) {
-        console.error(`Gemini ${model} threw:`, err);
       }
     }
   }
