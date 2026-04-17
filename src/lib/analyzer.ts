@@ -58,13 +58,20 @@ function missingRatio(values: string[]): number {
 
 // Detect if a column looks like a datetime
 function isTemporalColumn(colName: string, values: string[]): boolean {
-  const nameMatch = /(date|time|timestamp|created|updated|year|month|day)/i.test(colName);
-  if (nameMatch) return true;
-  // Sample up to 20 values and check if they parse as dates
+  // Only match on column name — do NOT use Date.parse() on values
+  // because short integers like "52" or "1" parse as valid dates
+  const nameMatch = /(date|time|timestamp|created_at|updated_at|datetime)/i.test(colName);
+  if (!nameMatch) return false;
+
+  // Extra confirmation: check if values look like actual date strings
+  // not just plain integers
   const sample = values.slice(0, 20).filter((v) => v !== "");
-  if (sample.length === 0) return false;
-  const dateCount = sample.filter((v) => !isNaN(Date.parse(v))).length;
-  return dateCount > sample.length * 0.7;
+  const looksLikeDates = sample.filter((v) => {
+    // Must contain a dash, slash, colon, or "T" to be a real date string
+    return /[-\/T:]/.test(v) && !isNaN(Date.parse(v));
+  }).length;
+
+  return looksLikeDates > sample.length * 0.5;
 }
 
 // Detect if a column is likely a target/label column
