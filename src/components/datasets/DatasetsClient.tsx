@@ -13,6 +13,21 @@ import DataTable from "./DataTable";
 
 type SelectedDataset = Dataset & { isOpen?: boolean };
 
+type UploadReport = {
+  datasetName: string;
+  riskScore: number;
+  riskLevel: string;
+  rowCount: number;
+  columnCount: number;
+  insights: Array<{
+    feature: string;
+    riskLevel: string;
+    leakageType: string;
+    description: string;
+    score: number;
+  }>;
+};
+
 export default function DatasetsClient() {
   const router = useRouter();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -20,6 +35,7 @@ export default function DatasetsClient() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
+  const [uploadReport, setUploadReport] = useState<UploadReport | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [selected, setSelected] = useState<SelectedDataset | null>(null);
 
@@ -63,9 +79,25 @@ export default function DatasetsClient() {
       if (!res.ok) {
         setUploadError(data.error || "Upload failed.");
       } else {
-        setUploadSuccess(`"${data.dataset.name}" uploaded successfully!`);
         setDatasets((prev) => [data.dataset, ...prev]);
-        setTimeout(() => setUploadSuccess(""), 4000);
+
+        // Fetch insights for the report
+        try {
+          const insightsRes = await fetch(`/api/datasets/${data.dataset.id}`);
+          const insightsData = await insightsRes.json();
+          setUploadReport({
+            datasetName: data.dataset.name,
+            riskScore: data.dataset.riskScore,
+            riskLevel: data.dataset.riskLevel,
+            rowCount: data.dataset.rowCount,
+            columnCount: data.dataset.columnCount,
+            insights: insightsData.insights || [],
+          });
+        } catch {
+          // fallback to simple success if insights fail
+          setUploadSuccess(`"${data.dataset.name}" uploaded successfully!`);
+          setTimeout(() => setUploadSuccess(""), 4000);
+        }
       }
     } catch {
       setUploadError("Network error. Please try again.");
@@ -154,6 +186,138 @@ export default function DatasetsClient() {
         <div className="flex items-center gap-2.5 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm animate-fade-in">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           {uploadSuccess}
+        </div>
+      )}
+
+      {uploadReport && (
+        <div className="glass rounded-2xl border border-slate-700/50 overflow-hidden animate-fade-in">
+          {/* Report header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">
+                  Analysis Complete — {uploadReport.datasetName}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {uploadReport.rowCount?.toLocaleString()} rows · {uploadReport.columnCount} columns
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                uploadReport.riskLevel === "CRITICAL"
+                  ? "bg-red-500/10 border-red-500/30 text-red-400"
+                  : uploadReport.riskLevel === "HIGH"
+                  ? "bg-orange-500/10 border-orange-500/30 text-orange-400"
+                  : uploadReport.riskLevel === "MEDIUM"
+                  ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400"
+                  : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+              }`}>
+                {uploadReport.riskScore}/100 {uploadReport.riskLevel}
+              </span>
+              <button
+                onClick={() => setUploadReport(null)}
+                className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Findings */}
+          <div className="px-5 py-4 space-y-3">
+            {uploadReport.insights.length === 0 ? (
+              <p className="text-sm text-emerald-400 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                No leakage issues detected. Dataset looks clean.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-400 font-medium">
+                  Found {uploadReport.insights.filter(i => i.riskLevel !== "LOW").length} issue(s) to fix before training:
+                </p>
+                {uploadReport.insights
+                  .filter(i => i.riskLevel !== "LOW" && i.feature !== "General Assessment")
+                  .slice(0, 5)
+                  .map((ins, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-3 p-3 rounded-xl border text-sm ${
+                      ins.riskLevel === "CRITICAL"
+                        ? "bg-red-500/5 border-red-500/20"
+                        : ins.riskLevel === "HIGH"
+                        ? "bg-orange-500/5 border-orange-500/20"
+                        : "bg-yellow-500/5 border-yellow-500/20"
+                    }`}
+                  >
+                    <span className="text-base shrink-0">
+                      {ins.riskLevel === "CRITICAL" ? "🔴" : ins.riskLevel === "HIGH" ? "🟠" : "🟡"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">
+                        <code className="text-orange-300 bg-orange-500/10 px-1 rounded text-xs">{ins.feature}</code>
+                        <span className="text-slate-400 text-xs ml-2">— {ins.leakageType}</span>
+                      </p>
+                      <p className="text-slate-400 text-xs mt-1 leading-relaxed line-clamp-2">
+                        {ins.description}
+                      </p>
+                    </div>
+                    <span className={`text-xs font-bold shrink-0 ${
+                      ins.riskLevel === "CRITICAL" ? "text-red-400"
+                      : ins.riskLevel === "HIGH" ? "text-orange-400"
+                      : "text-yellow-400"
+                    }`}>
+                      {ins.score}/100
+                    </span>
+                  </div>
+                ))}
+                {uploadReport.insights.filter(i => i.riskLevel !== "LOW").length > 5 && (
+                  <p className="text-xs text-slate-500 pl-1">
+                    +{uploadReport.insights.filter(i => i.riskLevel !== "LOW").length - 5} more issues — view full report
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Footer CTA */}
+          <div className="flex items-center gap-3 px-5 py-3 border-t border-slate-700/50 bg-slate-800/30">
+            <button
+              onClick={() => {
+                const ds = datasets[0];
+                if (ds) {
+                  setUploadReport(null);
+                  router.push(`/dashboard/chat?dataset=${ds.id}`);
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-400 text-white font-semibold rounded-xl text-xs transition-all"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Discuss with AI
+            </button>
+            <button
+              onClick={() => {
+                const ds = datasets[0];
+                if (ds) {
+                  setUploadReport(null);
+                  router.push(`/dashboard/insights?dataset=${ds.id}`);
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-2 glass hover:bg-slate-700/50 text-slate-300 font-medium rounded-xl text-xs transition-all"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              View Full Report
+            </button>
+            <button
+              onClick={() => setUploadReport(null)}
+              className="ml-auto text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
