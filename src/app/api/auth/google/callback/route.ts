@@ -65,12 +65,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Find or create user
-    const user = upsertGoogleUser({
+    const user = await upsertGoogleUser({
       sub: profile.sub,
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
     });
+
+    if (!user) {
+      return NextResponse.redirect(`${appUrl}/login?error=google_failed`);
+    }
 
     // Set JWT cookie — same structure as email/password login
     await setAuthCookie({

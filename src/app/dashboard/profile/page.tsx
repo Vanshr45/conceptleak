@@ -10,10 +10,10 @@ export const metadata: Metadata = { title: "Profile" };
 export default async function ProfilePage() {
   const session = await getSession();
   const userId = session!.sub;
-  const storedUser = getUserById(userId);
+  const storedUser = await getUserById(userId);
 
-  const datasets = getAllDatasets(userId);
-  const allInsights = datasets.flatMap((d) => getInsights(userId, d.id));
+  const datasets = await getAllDatasets(userId);
+  const allInsights = (await Promise.all(datasets.map((d) => getInsights(userId, d.id)))).flat();
   const criticalCount = allInsights.filter((i) => i.riskLevel === "CRITICAL").length;
 
   const authType = storedUser?.authType ?? session?.authType ?? "email";

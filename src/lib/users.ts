@@ -1,14 +1,10 @@
 /**
- * Lightweight JSON-file user store.
- * Reads/writes data/users.json on every operation — no external DB needed.
+ * Prisma-backed user store.
  * Passwords are hashed with bcryptjs before storage.
  */
-import fs from "fs";
-import path from "path";
 import bcrypt from "bcryptjs";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+import type { User } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 export type AuthType = "email" | "google";
 
@@ -22,71 +18,40 @@ export interface StoredUser {
   createdAt: string;
 }
 
-// ── File helpers ────────────────────────────────────────────────────────────
-
-let fallbackMemoryUsers: StoredUser[] | null = null;
-
-function ensureDataDir() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (e) {
-    // Read-only filesystem (e.g. Vercel)
-  }
-}
-
-function readUsers(): StoredUser[] {
-  if (fallbackMemoryUsers) return fallbackMemoryUsers;
-
-  ensureDataDir();
-  if (!fs.existsSync(USERS_FILE)) {
-    // Seed demo account on first run (synchronous bcrypt for init only)
-    const hash = bcrypt.hashSync("demo123", 10);
-    const demo: StoredUser[] = [
-      {
-        id: "user-demo",
-        name: "Vansh",
-        email: "demo@conceptleak.ai",
-        passwordHash: hash,
-        authType: "email",
-        createdAt: new Date("2024-01-01").toISOString(),
-      },
-    ];
-    
-    try {
-      fs.writeFileSync(USERS_FILE, JSON.stringify(demo, null, 2));
-    } catch {
-      fallbackMemoryUsers = demo;
-    }
-    
-    return demo;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8")) as StoredUser[];
-  } catch {
-    return [];
-  }
-}
-
-function writeUsers(users: StoredUser[]) {
-  fallbackMemoryUsers = users;
-  ensureDataDir();
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  } catch (err) {
-    console.warn("Failed to write to file system, using in-memory fallback.");
-  }
+function toStoredUser(user: User): StoredUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    passwordHash: user.passwordHash ?? undefined,
+    authType: user.authType as AuthType,
+    picture: user.picture ?? undefined,
+    createdAt: user.createdAt.toISOString(),
+  };
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-export function getUserByEmail(email: string): StoredUser | undefined {
-  const users = readUsers();
-  return users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+export async function getUserByEmail(email: string): Promise<StoredUser | undefined> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+    return user ? toStoredUser(user) : undefined;
+  } catch (error) {
+    console.error("Failed to find user by email:", error);
+    return undefined;
+  }
 }
 
-export function getUserById(id: string): StoredUser | undefined {
-  const users = readUsers();
-  return users.find((u) => u.id === id);
+export async function getUserById(id: string): Promise<StoredUser | undefined> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    return user ? toStoredUser(user) : undefined;
+  } catch (error) {
+    console.error("Failed to find user by id:", error);
+    return undefined;
+  }
 }
 
 /**
@@ -100,67 +65,88 @@ export async function loginOrRegister(
   password: string,
   nameHint?: string
 ): Promise<StoredUser | null> {
-  const users = readUsers();
-  const existing = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  try {
+    const normalizedEmail = email.toLowerCase();
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-  if (existing) {
-    // Existing account — must have a password hash (not Google-only)
-    if (!existing.passwordHash) {
-      // Google account — can't log in with password
-      return null;
+    if (existing) {
+      if (!existing.passwordHash) {
+        return null;
+      }
+
+      const ok = await bcrypt.compare(password, existing.passwordHash);
+      return ok ? toStoredUser(existing) : null;
     }
-    const ok = await bcrypt.compare(password, existing.passwordHash);
-    return ok ? existing : null;
-  }
 
-  // New account — register automatically
-  const hash = await bcrypt.hash(password, 10);
-  const newUser: StoredUser = {
-    id: `user-${Date.now()}`,
-    name: nameHint || email.split("@")[0],
-    email: email.toLowerCase(),
-    passwordHash: hash,
-    authType: "email",
-    createdAt: new Date().toISOString(),
-  };
-  users.push(newUser);
-  writeUsers(users);
-  return newUser;
+    const hash = await bcrypt.hash(password, 10);
+    const newUser = await prisma.user.create({
+      data: {
+        id: `user-${Date.now()}`,
+        name: nameHint || normalizedEmail.split("@")[0],
+        email: normalizedEmail,
+        passwordHash: hash,
+        authType: "email",
+      },
+    });
+
+    return toStoredUser(newUser);
+  } catch (error) {
+    console.error("Failed to login or register user:", error);
+    return null;
+  }
 }
 
 /**
  * Find-or-create a user from a Google OAuth profile.
  * Never sets a passwordHash — these accounts are Google-only.
  */
-export function upsertGoogleUser(profile: {
+export async function upsertGoogleUser(profile: {
   sub: string;
   email: string;
   name: string;
   picture?: string;
-}): StoredUser {
-  const users = readUsers();
-  const existing = users.find(
-    (u) => u.email.toLowerCase() === profile.email.toLowerCase()
-  );
+}): Promise<StoredUser | null> {
+  try {
+    const normalizedEmail = profile.email.toLowerCase();
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-  if (existing) {
-    // Upgrade to Google auth if they previously signed up with email
-    existing.authType = "google";
-    existing.picture = profile.picture ?? existing.picture;
-    existing.name = existing.name || profile.name;
-    writeUsers(users);
-    return existing;
+    if (user) {
+      const updated = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          authType: "google",
+          picture: profile.picture ?? user.picture,
+          name: user.name || profile.name,
+          email: normalizedEmail,
+        },
+      });
+      return toStoredUser(updated);
+    }
+
+    const created = await prisma.user.upsert({
+      where: { id: `user-g-${profile.sub}` },
+      update: {
+        name: profile.name,
+        email: normalizedEmail,
+        authType: "google",
+        picture: profile.picture,
+      },
+      create: {
+        id: `user-g-${profile.sub}`,
+        name: profile.name,
+        email: normalizedEmail,
+        authType: "google",
+        picture: profile.picture,
+      },
+    });
+
+    return toStoredUser(created);
+  } catch (error) {
+    console.error("Failed to upsert Google user:", error);
+    return null;
   }
-
-  const newUser: StoredUser = {
-    id: `user-g-${profile.sub}`,
-    name: profile.name,
-    email: profile.email.toLowerCase(),
-    authType: "google",
-    picture: profile.picture,
-    createdAt: new Date().toISOString(),
-  };
-  users.push(newUser);
-  writeUsers(users);
-  return newUser;
 }

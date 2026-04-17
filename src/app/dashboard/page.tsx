@@ -20,9 +20,9 @@ function getGreeting() {
 export default async function DashboardPage() {
   const session = await getSession();
   const userId = session!.sub;
-  const datasets = getAllDatasets(userId);
+  const datasets = await getAllDatasets(userId);
 
-  const allInsights = datasets.flatMap((d) => getInsights(userId, d.id));
+  const allInsights = (await Promise.all(datasets.map((d) => getInsights(userId, d.id)))).flat();
   const criticalCount = allInsights.filter((i) => i.riskLevel === "CRITICAL").length;
   const highCount = allInsights.filter((i) => i.riskLevel === "HIGH").length;
   const avgRisk = datasets.length

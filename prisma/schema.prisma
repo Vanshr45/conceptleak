@@ -1,0 +1,37 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String    @id // e.g. "user-g-{googleId}"
+  name         String
+  email        String    @unique
+  authType     String    @default("google")
+  passwordHash String?
+  picture      String?
+  createdAt    DateTime  @default(now())
+  datasets     Dataset[]
+}
+
+model Dataset {
+  id          String   @id
+  userId      String
+  name        String
+  size        String
+  uploadedAt  DateTime @default(now())
+  status      String   @default("completed")
+  riskScore   Int      @default(0)
+  riskLevel   String   @default("LOW")
+  rowCount    Int      @default(0)
+  columnCount Int      @default(0)
+  columns     Json     @default("[]")
+  previewRows Json     @default("[]")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

@@ -4,7 +4,16 @@ import { getAllDatasets } from "@/lib/store";
 
 export async function GET() {
   const session = await getSession();
-  // session is guaranteed by middleware, but getSession() gives us the userId
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const userId = session!.sub;
-  return NextResponse.json({ datasets: getAllDatasets(userId) });
+
+  try {
+    const datasets = await getAllDatasets(userId);
+    return NextResponse.json({ datasets });
+  } catch {
+    return NextResponse.json({ error: "Failed to load datasets" }, { status: 500 });
+  }
 }

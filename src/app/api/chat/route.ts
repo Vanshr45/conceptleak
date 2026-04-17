@@ -83,12 +83,12 @@ async function callAI(prompt: string): Promise<string | null> {
   return null;
 }
 
-function buildSystemPrompt(userId: string, datasetId?: string): string {
+async function buildSystemPrompt(userId: string, datasetId?: string): Promise<string> {
   let datasetContext = "";
 
   if (datasetId) {
-    const dataset = getDataset(userId, datasetId);
-    const insights = getInsights(userId, datasetId);
+    const dataset = await getDataset(userId, datasetId);
+    const insights = await getInsights(userId, datasetId);
 
     if (dataset) {
       datasetContext += `\n\n---\nACTIVE DATASET: "${dataset.name}"`;
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 
     const { message, datasetId } = result.data;
     const userId = session.sub;
-    const systemPrompt = buildSystemPrompt(userId, datasetId);
+    const systemPrompt = await buildSystemPrompt(userId, datasetId);
     const fullPrompt = `${systemPrompt}\n\nUser: ${message}\n\nAssistant:`;
 
     // Try AI backend
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
 
     // Fallback to smart keyword-based responses
     if (!reply) {
-      reply = generateFallbackResponse(message, userId, datasetId);
+      reply = await generateFallbackResponse(message, userId, datasetId);
     }
 
     // Persist to in-memory store
@@ -173,13 +173,13 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function generateFallbackResponse(message: string, userId: string, datasetId?: string): string {
+async function generateFallbackResponse(message: string, userId: string, datasetId?: string): Promise<string> {
   const lower = message.toLowerCase();
 
   // Dataset-aware fallbacks when Gemini is unavailable
   if (datasetId) {
-    const dataset = getDataset(userId, datasetId);
-    const insights = getInsights(userId, datasetId);
+    const dataset = await getDataset(userId, datasetId);
+    const insights = await getInsights(userId, datasetId);
 
     if (lower.match(/risk|score|danger|critical|issue/)) {
       const critical = insights.filter((i) => i.riskLevel === "CRITICAL").length;

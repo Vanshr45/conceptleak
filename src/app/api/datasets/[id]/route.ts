@@ -7,16 +7,24 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  const userId = session!.sub;
-  const { id } = await params;
-
-  const dataset = getDataset(userId, id);
-  if (!dataset) {
-    return NextResponse.json({ error: "Dataset not found" }, { status: 404 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const insights = getInsights(userId, id);
-  const chatHistory = getChatHistory(userId, id);
+  const userId = session.sub;
+  const { id } = await params;
 
-  return NextResponse.json({ dataset, insights, chatHistory });
+  try {
+    const dataset = await getDataset(userId, id);
+    if (!dataset) {
+      return NextResponse.json({ error: "Dataset not found" }, { status: 404 });
+    }
+
+    const insights = await getInsights(userId, id);
+    const chatHistory = getChatHistory(userId, id);
+
+    return NextResponse.json({ dataset, insights, chatHistory });
+  } catch {
+    return NextResponse.json({ error: "Failed to load dataset" }, { status: 500 });
+  }
 }

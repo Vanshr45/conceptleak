@@ -15,7 +15,11 @@ const ALLOWED_EXTENSIONS = [".csv", ".xlsx"];
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
-  const userId = session!.sub;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = session.sub;
 
   try {
     const formData = await req.formData();
@@ -116,9 +120,12 @@ export async function POST(req: NextRequest) {
       previewRows,
     };
 
-    addDataset(userId, dataset);
+    const createdDataset = await addDataset(userId, dataset);
+    if (!createdDataset) {
+      return NextResponse.json({ error: "Failed to save dataset" }, { status: 500 });
+    }
 
-    return NextResponse.json({ dataset });
+    return NextResponse.json({ dataset: createdDataset });
   } catch (err) {
     console.error("Upload error:", err);
     return NextResponse.json({ error: "Failed to process file" }, { status: 500 });

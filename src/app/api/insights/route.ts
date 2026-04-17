@@ -4,16 +4,25 @@ import { getInsights, getAllDatasets } from "@/lib/store";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
-  const userId = session!.sub;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = session.sub;
 
   const { searchParams } = new URL(req.url);
   const datasetId = searchParams.get("datasetId");
 
-  if (datasetId) {
-    return NextResponse.json({ insights: getInsights(userId, datasetId) });
-  }
+  try {
+    if (datasetId) {
+      const insights = await getInsights(userId, datasetId);
+      return NextResponse.json({ insights });
+    }
 
-  const datasets = getAllDatasets(userId);
-  const allInsights = datasets.flatMap((d) => getInsights(userId, d.id));
-  return NextResponse.json({ insights: allInsights });
+    const datasets = await getAllDatasets(userId);
+    const allInsights = (await Promise.all(datasets.map((d) => getInsights(userId, d.id)))).flat();
+    return NextResponse.json({ insights: allInsights });
+  } catch {
+    return NextResponse.json({ error: "Failed to load insights" }, { status: 500 });
+  }
 }

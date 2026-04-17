@@ -1,144 +1,143 @@
 /**
- * Per-user persistent store.
- * Datasets are saved to data/datasets-{userId}.json and loaded on demand.
+ * Prisma-backed dataset store.
  * Chat history and insights are kept in-memory (derived/ephemeral).
  */
-import fs from "fs";
-import path from "path";
 import type { Dataset, ChatMessage, Insight } from "@/types";
-
-const DATA_DIR = path.join(process.cwd(), "data");
+import { Prisma } from "@prisma/client";
+import type { Dataset as PrismaDataset } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 // In-memory caches (chat history + insights don't need persistence)
 const chatCache = new Map<string, ChatMessage[]>(); // key: `${userId}:${datasetId}`
 const insightCache = new Map<string, Insight[]>();   // key: datasetId
 
-// ── File helpers ─────────────────────────────────────────────────────────────
-
-const memoryDatasets = new Map<string, Dataset[]>();
-
-function ensureDataDir() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (e) {
-    // Ignore read-only filesystem error
-  }
+function toDataset(dataset: PrismaDataset): Dataset {
+  return {
+    id: dataset.id,
+    name: dataset.name,
+    size: dataset.size,
+    uploadedAt: dataset.uploadedAt.toISOString(),
+    status: dataset.status as Dataset["status"],
+    riskScore: dataset.riskScore,
+    riskLevel: dataset.riskLevel as Dataset["riskLevel"],
+    rowCount: dataset.rowCount,
+    columnCount: dataset.columnCount,
+    columns: Array.isArray(dataset.columns) ? (dataset.columns as string[]) : [],
+    previewRows: Array.isArray(dataset.previewRows)
+      ? (dataset.previewRows as Record<string, unknown>[])
+      : [],
+  };
 }
 
-function datasetsFile(userId: string) {
-  return path.join(DATA_DIR, `datasets-${userId}.json`);
-}
-
-function readUserDatasets(userId: string): Dataset[] {
-  if (memoryDatasets.has(userId)) return memoryDatasets.get(userId)!;
-  ensureDataDir();
-  const file = datasetsFile(userId);
-  if (!fs.existsSync(file)) {
-      const demo = getDemoDatasets();
-      memoryDatasets.set(userId, demo);
-      return demo;
-  }
-  try {
-    const raw = JSON.parse(fs.readFileSync(file, "utf-8")) as Dataset[];
-    const result = raw.length > 0 ? raw : getDemoDatasets();
-    memoryDatasets.set(userId, result);
-    return result;
-  } catch {
-    const demo = getDemoDatasets();
-    memoryDatasets.set(userId, demo);
-    return demo;
-  }
-}
-
-function writeUserDatasets(userId: string, datasets: Dataset[]) {
-  memoryDatasets.set(userId, datasets);
-  ensureDataDir();
-  try {
-    fs.writeFileSync(datasetsFile(userId), JSON.stringify(datasets, null, 2));
-  } catch (e) {
-    console.warn("Failed to write datasets to file system, using in-memory layer.");
-  }
-}
-
-// ── Demo seed data ────────────────────────────────────────────────────────────
-
-function getDemoDatasets(): Dataset[] {
-  return [
-    {
-      id: "demo-1",
-      name: "customer_data.csv",
-      size: "2.4 MB",
-      uploadedAt: new Date("2024-03-25").toISOString(),
-      status: "completed",
-      riskScore: 82,
-      riskLevel: "HIGH",
-      rowCount: 1250,
-      columnCount: 5,
-      columns: ["id", "name", "email", "phone", "address"],
-      previewRows: [
-        { id: 1, name: "Alice Johnson", email: "alice@example.com", phone: "555-0101", address: "123 Main St" },
-        { id: 2, name: "Bob Smith", email: "bob@example.com", phone: "555-0102", address: "456 Oak Ave" },
-        { id: 3, name: "Carol White", email: "carol@example.com", phone: "555-0103", address: "789 Pine Rd" },
-        { id: 4, name: "David Brown", email: "david@example.com", phone: "555-0104", address: "321 Elm St" },
-        { id: 5, name: "Eve Davis", email: "eve@example.com", phone: "555-0105", address: "654 Maple Ave" },
-      ],
-    },
-    {
-      id: "demo-2",
-      name: "transactions.csv",
-      size: "5.1 MB",
-      uploadedAt: new Date("2024-03-24").toISOString(),
-      status: "completed",
-      riskScore: 65,
-      riskLevel: "HIGH",
-      rowCount: 8432,
-      columnCount: 5,
-      columns: ["transaction_id", "customer_id", "amount", "date", "status"],
-      previewRows: [
-        { transaction_id: "TXN-001", customer_id: "CUST-042", amount: 299.99, date: "2024-03-20", status: "completed" },
-        { transaction_id: "TXN-002", customer_id: "CUST-017", amount: 49.50, date: "2024-03-20", status: "completed" },
-        { transaction_id: "TXN-003", customer_id: "CUST-088", amount: 1200.00, date: "2024-03-21", status: "pending" },
-        { transaction_id: "TXN-004", customer_id: "CUST-042", amount: 75.25, date: "2024-03-21", status: "completed" },
-        { transaction_id: "TXN-005", customer_id: "CUST-033", amount: 899.00, date: "2024-03-22", status: "failed" },
-      ],
-    },
-    {
-      id: "demo-3",
-      name: "employees.xlsx",
-      size: "1.2 MB",
-      uploadedAt: new Date("2024-03-23").toISOString(),
-      status: "completed",
-      riskScore: 45,
-      riskLevel: "MEDIUM",
-      rowCount: 342,
-      columnCount: 6,
-      columns: ["emp_id", "name", "department", "salary", "hire_date", "manager_id"],
-      previewRows: [
-        { emp_id: "E001", name: "John Doe", department: "Engineering", salary: 95000, hire_date: "2022-01-15", manager_id: "E010" },
-        { emp_id: "E002", name: "Jane Roe", department: "Marketing", salary: 78000, hire_date: "2021-06-01", manager_id: "E011" },
-        { emp_id: "E003", name: "Mike Lee", department: "Engineering", salary: 102000, hire_date: "2020-09-12", manager_id: "E010" },
-        { emp_id: "E004", name: "Sara Kim", department: "HR", salary: 65000, hire_date: "2023-03-20", manager_id: "E012" },
-        { emp_id: "E005", name: "Tom Hall", department: "Finance", salary: 88000, hire_date: "2019-11-05", manager_id: "E013" },
-      ],
-    },
-  ];
+function toJsonValue(value: unknown): Prisma.InputJsonValue {
+  return value as Prisma.InputJsonValue;
 }
 
 // ── Public API (all functions require userId) ─────────────────────────────────
 
-export function getAllDatasets(userId: string): Dataset[] {
-  return readUserDatasets(userId).sort(
-    (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
-  );
+export async function getAllDatasets(userId: string): Promise<Dataset[]> {
+  try {
+    const datasets = await prisma.dataset.findMany({
+      where: { userId },
+      orderBy: { uploadedAt: "desc" },
+    });
+    return datasets.map(toDataset);
+  } catch (error) {
+    console.error("Failed to load datasets:", error);
+    return [];
+  }
 }
 
-export function getDataset(userId: string, datasetId: string): Dataset | undefined {
-  return readUserDatasets(userId).find((d) => d.id === datasetId);
+export async function getDataset(userId: string, datasetId: string): Promise<Dataset | undefined> {
+  try {
+    const dataset = await prisma.dataset.findUnique({
+      where: { id: datasetId },
+    });
+
+    if (!dataset || dataset.userId !== userId) {
+      return undefined;
+    }
+
+    return toDataset(dataset);
+  } catch (error) {
+    console.error("Failed to load dataset:", error);
+    return undefined;
+  }
 }
 
-export function addDataset(userId: string, dataset: Dataset): void {
-  const existing = readUserDatasets(userId).filter((d) => d.id !== dataset.id);
-  writeUserDatasets(userId, [dataset, ...existing]);
+export async function addDataset(userId: string, dataset: Dataset): Promise<Dataset | null> {
+  try {
+    const created = await prisma.dataset.create({
+      data: {
+        id: dataset.id,
+        userId,
+        name: dataset.name,
+        size: dataset.size,
+        uploadedAt: new Date(dataset.uploadedAt),
+        status: dataset.status,
+        riskScore: dataset.riskScore ?? 0,
+        riskLevel: dataset.riskLevel ?? "LOW",
+        rowCount: dataset.rowCount ?? 0,
+        columnCount: dataset.columnCount ?? 0,
+        columns: toJsonValue(dataset.columns ?? []),
+        previewRows: toJsonValue(dataset.previewRows ?? []),
+      },
+    });
+    return toDataset(created);
+  } catch (error) {
+    console.error("Failed to create dataset:", error);
+    return null;
+  }
+}
+
+export async function updateDataset(
+  userId: string,
+  datasetId: string,
+  dataset: Partial<Dataset>
+): Promise<Dataset | null> {
+  try {
+    const existing = await prisma.dataset.findUnique({ where: { id: datasetId } });
+    if (!existing || existing.userId !== userId) {
+      return null;
+    }
+
+    const updated = await prisma.dataset.update({
+      where: { id: datasetId },
+      data: {
+        ...(dataset.name !== undefined ? { name: dataset.name } : {}),
+        ...(dataset.size !== undefined ? { size: dataset.size } : {}),
+        ...(dataset.uploadedAt !== undefined ? { uploadedAt: new Date(dataset.uploadedAt) } : {}),
+        ...(dataset.status !== undefined ? { status: dataset.status } : {}),
+        ...(dataset.riskScore !== undefined ? { riskScore: dataset.riskScore } : {}),
+        ...(dataset.riskLevel !== undefined ? { riskLevel: dataset.riskLevel } : {}),
+        ...(dataset.rowCount !== undefined ? { rowCount: dataset.rowCount } : {}),
+        ...(dataset.columnCount !== undefined ? { columnCount: dataset.columnCount } : {}),
+        ...(dataset.columns !== undefined ? { columns: toJsonValue(dataset.columns) } : {}),
+        ...(dataset.previewRows !== undefined ? { previewRows: toJsonValue(dataset.previewRows) } : {}),
+      },
+    });
+    return toDataset(updated);
+  } catch (error) {
+    console.error("Failed to update dataset:", error);
+    return null;
+  }
+}
+
+export async function deleteDataset(userId: string, datasetId: string): Promise<boolean> {
+  try {
+    const existing = await prisma.dataset.findUnique({ where: { id: datasetId } });
+    if (!existing || existing.userId !== userId) {
+      return false;
+    }
+
+    await prisma.dataset.delete({ where: { id: datasetId } });
+    insightCache.delete(datasetId);
+    chatCache.delete(`${userId}:${datasetId}`);
+    return true;
+  } catch (error) {
+    console.error("Failed to delete dataset:", error);
+    return false;
+  }
 }
 
 // ── Chat history (in-memory, per user+dataset) ────────────────────────────────
@@ -156,10 +155,10 @@ export function addMessage(userId: string, datasetId: string, message: ChatMessa
 
 // ── Insights (generated + cached in-memory) ────────────────────────────────────
 
-export function getInsights(userId: string, datasetId: string): Insight[] {
+export async function getInsights(userId: string, datasetId: string): Promise<Insight[]> {
   if (insightCache.has(datasetId)) return insightCache.get(datasetId)!;
 
-  const dataset = getDataset(userId, datasetId);
+  const dataset = await getDataset(userId, datasetId);
   if (!dataset) return [];
 
   const insights = generateInsights(dataset);
