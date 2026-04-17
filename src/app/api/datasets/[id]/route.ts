@@ -21,7 +21,7 @@ export async function GET(
     }
 
     const insights = await getInsights(userId, id);
-    const chatHistory = getChatHistory(userId, id);
+    const chatHistory = await getChatHistory(userId, id);
 
     return NextResponse.json({ dataset, insights, chatHistory });
   } catch {

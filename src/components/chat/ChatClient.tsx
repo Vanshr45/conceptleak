@@ -74,7 +74,21 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
         timestamp: new Date().toISOString(),
       },
     ]);
-  }, []);
+  }, [activeDatasetId]);
+
+  useEffect(() => {
+    if (!activeDatasetId) return;
+    fetch(`/api/chat?datasetId=${activeDatasetId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.messages?.length > 0) {
+          setMessages((prev) => {
+            const welcomeMsg = prev.find((m) => m.id === "welcome");
+            return welcomeMsg ? [welcomeMsg, ...d.messages] : d.messages;
+          });
+        }
+      });
+  }, [activeDatasetId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -100,16 +114,60 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), datasetId: activeDatasetId }),
       });
-      const data = await res.json();
 
-      const botMsg: ChatMessage = {
-        id: `b-${Date.now()}`,
-        text: data.reply || "Sorry, I couldn't process that. Please try again.",
-        sender: "bot",
-        timestamp: new Date().toISOString(),
-      };
+      const contentType = res.headers.get("content-type") || "";
 
-      setMessages((prev) => [...prev, botMsg]);
+      // ── Streaming (Groq) ──────────────────────────────────────────────────
+      if (contentType.includes("text/event-stream")) {
+        const botMsgId = `b-${Date.now()}`;
+        setMessages((prev) => [
+          ...prev,
+          { id: botMsgId, text: "", sender: "bot", timestamp: new Date().toISOString() },
+        ]);
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n").filter((l) => l.startsWith("data: "));
+
+          for (const line of lines) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              const token = parsed?.token;
+              if (token) {
+                fullText += token;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botMsgId ? { ...m, text: fullText } : m
+                  )
+                );
+              }
+            } catch {}
+          }
+        }
+
+      // ── Non-streaming fallback ────────────────────────────────────────────
+      } else {
+        const data = await res.json();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `b-${Date.now()}`,
+            text: data.reply || "Sorry, I couldn't process that. Please try again.",
+            sender: "bot",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -142,7 +200,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
             <Bot className="w-5 h-5 text-orange-400" />
             AI Chat
           </h1>
-          <p className="text-slate-500 text-xs mt-0.5">Powered by Gemini 2.0 Flash</p>
+          <p className="text-slate-500 text-xs mt-0.5">Powered by Llama 3.3</p>
         </div>
 
         {/* Dataset selector */}

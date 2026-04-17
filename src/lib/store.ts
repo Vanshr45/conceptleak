@@ -7,8 +7,7 @@ import { Prisma } from "@prisma/client";
 import type { Dataset as PrismaDataset } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-// In-memory caches (chat history + insights don't need persistence)
-const chatCache = new Map<string, ChatMessage[]>(); // key: `${userId}:${datasetId}`
+// In-memory caches (insights are derived/ephemeral)
 const insightCache = new Map<string, Insight[]>();   // key: datasetId
 
 function toDataset(dataset: PrismaDataset): Dataset {
@@ -132,7 +131,7 @@ export async function deleteDataset(userId: string, datasetId: string): Promise<
 
     await prisma.dataset.delete({ where: { id: datasetId } });
     insightCache.delete(datasetId);
-    chatCache.delete(`${userId}:${datasetId}`);
+    await prisma.message.deleteMany({ where: { userId, datasetId } });
     return true;
   } catch (error) {
     console.error("Failed to delete dataset:", error);
@@ -140,20 +139,57 @@ export async function deleteDataset(userId: string, datasetId: string): Promise<
   }
 }
 
-// ── Chat history (in-memory, per user+dataset) ────────────────────────────────
+// ── Chat history ───────────────────────────────────────────────────────────────
 
-export function getChatHistory(userId: string, datasetId: string): ChatMessage[] {
-  return chatCache.get(`${userId}:${datasetId}`) || [];
+export async function getChatHistory(
+  userId: string,
+  datasetId: string,
+  limit = 20
+): Promise<ChatMessage[]> {
+  try {
+    const messages = await prisma.message.findMany({
+      where: { userId, datasetId },
+      orderBy: { createdAt: "asc" },
+      take: limit,
+    });
+    return messages.map((m) => ({
+      id: m.id,
+      text: m.text,
+      sender: m.sender as "user" | "bot",
+      timestamp: m.createdAt.toISOString(),
+      datasetId: m.datasetId,
+    }));
+  } catch (error) {
+    console.error("Failed to load chat history:", error);
+    return [];
+  }
 }
 
-export function addMessage(userId: string, datasetId: string, message: ChatMessage): void {
-  const key = `${userId}:${datasetId}`;
-  const history = chatCache.get(key) || [];
-  history.push(message);
-  chatCache.set(key, history);
+export async function addMessage(
+  userId: string,
+  datasetId: string,
+  message: ChatMessage
+): Promise<void> {
+  try {
+    await prisma.message.create({
+      data: {
+        id: message.id,
+        userId,
+        datasetId,
+        sender: message.sender,
+        text: message.text,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to save message:", error);
+  }
 }
 
 // ── Insights (generated + cached in-memory) ────────────────────────────────────
+
+export function cacheInsights(datasetId: string, insights: Insight[]): void {
+  insightCache.set(datasetId, insights);
+}
 
 export async function getInsights(userId: string, datasetId: string): Promise<Insight[]> {
   if (insightCache.has(datasetId)) return insightCache.get(datasetId)!;
@@ -161,75 +197,16 @@ export async function getInsights(userId: string, datasetId: string): Promise<In
   const dataset = await getDataset(userId, datasetId);
   if (!dataset) return [];
 
-  const insights = generateInsights(dataset);
+  // Re-analyze using preview rows as fallback
+  // (full analysis happens at upload time and is cached)
+  const { analyzeDataset } = await import("@/lib/analyzer");
+  const previewAsStrings = (dataset.previewRows || []).map((row) =>
+    Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [k, String(v)])
+    ) as Record<string, string>
+  );
+
+  const { insights } = analyzeDataset(dataset.columns || [], previewAsStrings);
   insightCache.set(datasetId, insights);
-  return insights;
-}
-
-function generateInsights(dataset: Dataset): Insight[] {
-  const columns = dataset.columns || [];
-  const insights: Insight[] = [];
-
-  const idPatterns = /^(id|uuid|guid|index|row_id|record_id|primary_key|pk)$/i;
-  const piiPatterns = /(email|phone|address|ssn|passport|credit|card|dob|birth|name|gender|age)/i;
-  const temporalPatterns = /(date|time|timestamp|created_at|updated_at|year|month|day)/i;
-  const salaryPatterns = /(salary|wage|income|pay|compensation)/i;
-
-  columns.forEach((col, i) => {
-    if (idPatterns.test(col)) {
-      insights.push({
-        id: `insight-${i}-id`,
-        feature: col,
-        riskLevel: "CRITICAL",
-        score: 92,
-        description: `Column "${col}" appears to be a direct identifier — a primary driver of ID leakage. ML models trained with this feature will memorize identities instead of learning generalizable patterns.`,
-        affectedRecords: Math.floor((dataset.rowCount || 100) * 0.98),
-        leakageType: "Direct ID Leakage",
-      });
-    } else if (piiPatterns.test(col)) {
-      insights.push({
-        id: `insight-${i}-pii`,
-        feature: col,
-        riskLevel: "HIGH",
-        score: 74,
-        description: `Column "${col}" contains Personally Identifiable Information (PII). This data can act as a proxy for protected attributes, leading to discriminatory model behavior and privacy violations.`,
-        affectedRecords: Math.floor((dataset.rowCount || 100) * 0.87),
-        leakageType: "PII / Proxy Leakage",
-      });
-    } else if (temporalPatterns.test(col)) {
-      insights.push({
-        id: `insight-${i}-temporal`,
-        feature: col,
-        riskLevel: "MEDIUM",
-        score: 58,
-        description: `Column "${col}" is a temporal feature. If the train/test split is not time-aware, future information can leak into past predictions — causing inflated performance that won't hold in production.`,
-        affectedRecords: Math.floor((dataset.rowCount || 100) * 0.45),
-        leakageType: "Temporal Leakage",
-      });
-    } else if (salaryPatterns.test(col)) {
-      insights.push({
-        id: `insight-${i}-target`,
-        feature: col,
-        riskLevel: "HIGH",
-        score: 71,
-        description: `Column "${col}" may be correlated with the target variable. Including it can cause target leakage, where the model indirectly accesses the label during training.`,
-        affectedRecords: Math.floor((dataset.rowCount || 100) * 0.62),
-        leakageType: "Target / Feature Leakage",
-      });
-    }
-  });
-
-  if (insights.length === 0) {
-    insights.push({
-      id: "insight-generic",
-      feature: "General Assessment",
-      riskLevel: "LOW",
-      score: 22,
-      description: "No obvious concept leakage patterns detected in column names. Recommend a deeper statistical analysis to rule out indirect or proxy leakage.",
-      affectedRecords: 0,
-      leakageType: "None Detected",
-    });
-  }
-
   return insights;
 }

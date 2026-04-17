@@ -35,3 +35,14 @@ model Dataset {
 
   @@index([userId])
 }
+
+model Message {
+  id        String   @id
+  userId    String
+  datasetId String
+  sender    String
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([userId, datasetId])
+}

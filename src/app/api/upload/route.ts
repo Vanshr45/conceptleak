@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { addDataset } from "@/lib/store";
+import { addDataset, cacheInsights } from "@/lib/store";
 import { scoreToRisk } from "@/lib/utils";
+import { analyzeDataset } from "@/lib/analyzer";
 import type { Dataset } from "@/types";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = [".csv", ".xlsx"];
 const ALLOWED_TYPES = [
   "text/csv",
   "application/csv",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-excel",
 ];
-const ALLOWED_EXTENSIONS = [".csv", ".xlsx"];
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -24,7 +25,6 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
@@ -37,14 +37,12 @@ export async function POST(req: NextRequest) {
         { status: 415 }
       );
     }
-
     if (file.type && !ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid MIME type. Only CSV and XLSX files are accepted." },
+        { error: "Invalid MIME type." },
         { status: 415 }
       );
     }
-
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "File too large. Maximum allowed size is 10 MB." },
@@ -54,20 +52,20 @@ export async function POST(req: NextRequest) {
 
     const buffer = await file.arrayBuffer();
     let columns: string[] = [];
-    let previewRows: Record<string, unknown>[] = [];
-    let rowCount = 0;
+    let allRows: Record<string, string>[] = [];
 
+    // ── Parse ALL rows (not just 5) ──────────────────────────────────────────
     if (fileName.endsWith(".csv")) {
       const text = new TextDecoder().decode(buffer);
       const lines = text.split("\n").filter((l) => l.trim());
       if (lines.length > 0) {
         columns = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-        const dataLines = lines.slice(1, 6);
-        previewRows = dataLines.map((line) => {
+        allRows = lines.slice(1).map((line) => {
           const values = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
-          return Object.fromEntries(columns.map((col, i) => [col, values[i] ?? ""]));
+          return Object.fromEntries(
+            columns.map((col, i) => [col, values[i] ?? ""])
+          ) as Record<string, string>;
         });
-        rowCount = lines.length - 1;
       }
     } else if (fileName.endsWith(".xlsx")) {
       const XLSX = await import("xlsx");
@@ -75,29 +73,22 @@ export async function POST(req: NextRequest) {
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
       const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
-
       if (jsonData.length > 0) {
         columns = (jsonData[0] as string[]).map(String);
-        const dataRows = jsonData.slice(1, 6);
-        previewRows = dataRows.map((row) => {
+        allRows = jsonData.slice(1).map((row) => {
           const arr = row as unknown[];
-          return Object.fromEntries(columns.map((col, i) => [col, arr[i] ?? ""]));
+          return Object.fromEntries(
+            columns.map((col, i) => [col, String(arr[i] ?? "")])
+          ) as Record<string, string>;
         });
-        rowCount = jsonData.length - 1;
       }
     }
 
-    const idPattern = /\b(id|uuid|guid|index)\b/i;
-    const piiPattern = /(email|phone|ssn|passport|name|address)/i;
-    const temporalPattern = /(date|time|timestamp|created|updated)/i;
+    const rowCount = allRows.length;
+    const previewRows = allRows.slice(0, 5);
 
-    let riskScore = 20;
-    columns.forEach((col) => {
-      if (idPattern.test(col)) riskScore += 25;
-      if (piiPattern.test(col)) riskScore += 15;
-      if (temporalPattern.test(col)) riskScore += 10;
-    });
-    riskScore = Math.min(riskScore, 100);
+    // ── Run real statistical analysis ────────────────────────────────────────
+    const { riskScore, insights } = analyzeDataset(columns, allRows);
 
     const sizeStr =
       file.size < 1024
@@ -124,6 +115,9 @@ export async function POST(req: NextRequest) {
     if (!createdDataset) {
       return NextResponse.json({ error: "Failed to save dataset" }, { status: 500 });
     }
+
+    // Cache computed insights so they're ready immediately
+    cacheInsights(createdDataset.id, insights);
 
     return NextResponse.json({ dataset: createdDataset });
   } catch (err) {
