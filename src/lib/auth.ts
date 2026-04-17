@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { ensureUserFromSession } from "@/lib/users";
 
 const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "conceptleak-secret-key"
@@ -36,7 +37,11 @@ export async function getSession(): Promise<JWTPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value;
   if (!token) return null;
-  return verifyToken(token);
+  const session = await verifyToken(token);
+  if (!session) return null;
+
+  await ensureUserFromSession(session);
+  return session;
 }
 
 export async function setAuthCookie(payload: Omit<JWTPayload, "iat" | "exp">) {

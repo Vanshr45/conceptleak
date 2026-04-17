@@ -5,6 +5,7 @@
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { JWTPayload } from "@/lib/auth";
 
 export type AuthType = "email" | "google";
 
@@ -147,6 +148,33 @@ export async function upsertGoogleUser(profile: {
     return toStoredUser(created);
   } catch (error) {
     console.error("Failed to upsert Google user:", error);
+    return null;
+  }
+}
+
+export async function ensureUserFromSession(session: JWTPayload): Promise<StoredUser | null> {
+  try {
+    const normalizedEmail = session.email.toLowerCase();
+    const user = await prisma.user.upsert({
+      where: { id: session.sub },
+      update: {
+        name: session.name,
+        email: normalizedEmail,
+        authType: session.authType ?? "email",
+        picture: session.picture,
+      },
+      create: {
+        id: session.sub,
+        name: session.name,
+        email: normalizedEmail,
+        authType: session.authType ?? "email",
+        picture: session.picture,
+      },
+    });
+
+    return toStoredUser(user);
+  } catch (error) {
+    console.error("Failed to ensure session user:", error);
     return null;
   }
 }
