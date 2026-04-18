@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-elevated: #293548;
-  --color-border: #334155;
-  --color-border-subtle: #1e293b;
+  --color-background: #0a0a0f;
+  --color-surface: #111118;
+  --color-surface-elevated: #1a1a24;
+  --color-border: rgba(255,255,255,0.06);
+  --color-border-strong: rgba(255,255,255,0.12);
   --color-accent: #f97316;
-  --color-accent-muted: rgba(249, 115, 22, 0.15);
-  --color-text: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-accent-muted: rgba(249, 115, 22, 0.12);
+  --color-text: #ebebf0;
+  --color-text-secondary: #7b7b8d;
+  --color-text-muted: #4a4a5a;
   --color-risk-critical: #ef4444;
   --color-risk-high: #f97316;
-  --color-risk-medium: #f59e0b;
-  --color-risk-low: #10b981;
+  --color-risk-medium: #eab308;
+  --color-risk-low: #22c55e;
 }
 
 * {
@@ -26,8 +26,8 @@ html {
 }
 
 body {
-  background-color: #0f172a;
-  color: #f1f5f9;
+  background-color: #0a0a0f;
+  color: #ebebf0;
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -43,27 +43,34 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgba(255,255,255,0.08);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgba(255,255,255,0.14);
 }
 
 /* Glass morphism utility */
 .glass {
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(17, 17, 24, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.5);
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
 .glass-heavy {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(10, 10, 15, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(51, 65, 85, 0.6);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Surface cards */
+.card {
+  background: #111118;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.75rem;
 }
 
 /* Gradient text */
@@ -83,10 +90,48 @@ body {
   box-shadow: 0 0 10px rgba(249, 115, 22, 0.2);
 }
 
-/* Animated gradient border */
-@keyframes border-rotate {
-  0% { --gradient-angle: 0deg; }
-  100% { --gradient-angle: 360deg; }
+/* Section label */
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #7b7b8d;
+  text-transform: uppercase;
+}
+
+/* Finding card left border variants */
+.finding-card-critical { border-left: 3px solid #ef4444; }
+.finding-card-high     { border-left: 3px solid #f97316; }
+.finding-card-medium   { border-left: 3px solid #eab308; }
+.finding-card-low      { border-left: 3px solid #22c55e; }
+
+/* Risk score box */
+.risk-score-box {
+  background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.08));
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 0.75rem;
+  padding: 1rem 1.5rem;
+  text-align: center;
+}
+
+/* Column health chip */
+.column-health-chip {
+  background: #1a1a24;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Chat code blocks */
+.chat-code-block {
+  background: #0a0a0f;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: #7b7b8d;
 }
 
 /* Chat markdown styles */
@@ -94,7 +139,7 @@ body {
   font-weight: 700;
   margin-bottom: 0.5rem;
   margin-top: 0.75rem;
-  color: #f1f5f9;
+  color: #ebebf0;
 }
 
 .chat-markdown h1 { font-size: 1.1rem; }
@@ -117,7 +162,7 @@ body {
 }
 
 .chat-markdown code {
-  background: rgba(51, 65, 85, 0.6);
+  background: rgba(249,115,22,0.1);
   padding: 0.1rem 0.3rem;
   border-radius: 0.25rem;
   font-size: 0.85em;
@@ -126,8 +171,8 @@ body {
 }
 
 .chat-markdown pre {
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid #334155;
+  background: #0a0a0f;
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   overflow-x: auto;
@@ -137,7 +182,7 @@ body {
 .chat-markdown pre code {
   background: none;
   padding: 0;
-  color: #94a3b8;
+  color: #7b7b8d;
 }
 
 .chat-markdown strong {
@@ -146,14 +191,45 @@ body {
 }
 
 .chat-markdown em {
-  color: #94a3b8;
+  color: #7b7b8d;
 }
 
 .chat-markdown blockquote {
   border-left: 3px solid #f97316;
   padding-left: 0.75rem;
   margin: 0.5rem 0;
-  color: #94a3b8;
+  color: #7b7b8d;
+}
+
+/* Inline chat table */
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.chat-markdown th {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7b7b8d;
+}
+
+.chat-markdown td {
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 0.4rem 0.75rem;
+  color: #ebebf0;
+}
+
+/* Animated gradient border */
+@keyframes border-rotate {
+  0% { --gradient-angle: 0deg; }
+  100% { --gradient-angle: 360deg; }
 }
 
 /* Typing animation */
@@ -189,7 +265,7 @@ body {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #1e293b 25%, #293548 50%, #1e293b 75%);
+  background: linear-gradient(90deg, #111118 25%, #1a1a24 50%, #111118 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }

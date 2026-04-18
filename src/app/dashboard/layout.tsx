@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect("/login");
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0f172a]">
+    <div className="flex h-screen overflow-hidden" style={{ background: "#0a0a0f" }}>
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopBar user={{ name: session.name, email: session.email }} />

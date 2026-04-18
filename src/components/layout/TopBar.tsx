@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, User, Bell, Menu, X, LayoutDashboard, Database, MessageSquare, BarChart3 } from "lucide-react";
+import { LogOut, User, Bell, Menu, X, LayoutDashboard, Database, MessageSquare, BarChart3, Upload } from "lucide-react";
 
 // ... existing code ...
 
@@ -13,6 +13,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/chat": "AI Chat",
   "/dashboard/insights": "Insights",
   "/dashboard/profile": "Profile",
+  "/dashboard/settings": "Settings",
 };
 
 const MOBILE_NAV = [
@@ -57,98 +58,118 @@ export default function TopBar({ user }: TopBarProps) {
 
   return (
     <>
-      <header className="flex items-center justify-between h-14 px-4 md:px-6 border-b border-slate-800/60 bg-slate-900/60 backdrop-blur-md shrink-0">
-        {/* Mobile menu toggle + title */}
+      <header
+        className="flex items-center justify-between h-14 px-4 md:px-6 shrink-0"
+        style={{ background: "#0d0d14", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        {/* Left: mobile menu + breadcrumb */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+            className="md:hidden p-1.5 rounded-lg transition-colors"
+            style={{ color: "#7b7b8d" }}
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          <h2 className="text-base font-semibold text-white">{title}</h2>
+
+          {/* Breadcrumb — desktop only */}
+          <div className="hidden md:flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em]">
+            <span style={{ color: "#4a4a5a" }}>WORKSPACE</span>
+            <span style={{ color: "#4a4a5a" }}>›</span>
+            <span style={{ color: "#f97316" }}>{title.toUpperCase()}</span>
+          </div>
+
+          {/* Mobile title */}
+          <h2 className="md:hidden text-base font-semibold" style={{ color: "#ebebf0" }}>{title}</h2>
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-2">
-          <div className="relative" ref={dropdownRef}>
+        <div className="flex items-center gap-3" ref={dropdownRef}>
+          {/* Upload Dataset button — hidden on small screens */}
+          <Link
+            href="/dashboard/datasets"
+            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-semibold transition-all hover:opacity-90"
+            style={{ background: "#f97316" }}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload Dataset
+          </Link>
+
+          {/* Hidden bell — state preserved, UI hidden */}
+          <div className="hidden" aria-hidden="true">
+            <button onClick={() => setNotificationsOpen(!notificationsOpen)} aria-label="Notifications">
+              <Bell className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Avatar dropdown */}
+          <div className="relative">
             <button
               onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="relative p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-              aria-label="Notifications"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all hover:opacity-80"
+              style={{
+                background: "rgba(249,115,22,0.2)",
+                border: "1px solid rgba(249,115,22,0.35)",
+                color: "#f97316",
+              }}
+              aria-label="Account menu"
             >
-              <Bell className="w-4.5 h-4.5" size={18} />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-500 rounded-full" />
+              {user.name.charAt(0).toUpperCase()}
             </button>
 
             {notificationsOpen && (
-              <div className="absolute right-0 mt-2 w-64 md:w-72 bg-slate-800/95 backdrop-blur-md rounded-xl border border-slate-700 shadow-xl overflow-hidden z-50">
-                <div className="p-3 border-b border-slate-700/50 bg-slate-800/50">
-                  <h3 className="text-sm font-semibold text-white">Recent Activity</h3>
+              <div
+                className="absolute right-0 mt-2 w-52 rounded-xl shadow-xl overflow-hidden z-50"
+                style={{ background: "#1a1a24", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                <div className="p-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-xs font-semibold" style={{ color: "#ebebf0" }}>{user.name}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "#7b7b8d" }}>{user.email}</p>
                 </div>
-                <div className="p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto">
-                  <div className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer">
-                    <p className="text-xs font-medium text-slate-200">New Login Detected</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Just now from ConceptLeak</p>
-                  </div>
-                  <div className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer">
-                    <p className="text-xs font-medium text-slate-200">Analysis completed</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">2 hours ago</p>
-                  </div>
-                  <div className="p-2 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer">
-                    <p className="text-xs font-medium text-slate-200">Profile Settings Updated</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">1 day ago</p>
-                  </div>
-                </div>
-                <div className="p-2 border-t border-slate-700/50 bg-slate-800/50">
-                  <button
+                <div className="p-1">
+                  <Link
+                    href="/dashboard/profile"
                     onClick={() => setNotificationsOpen(false)}
-                    className="w-full text-center text-xs text-orange-400 hover:text-orange-300 py-1 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors hover:bg-white/5"
+                    style={{ color: "#7b7b8d" }}
                   >
-                    Mark all as read
+                    <User className="w-3.5 h-3.5" />
+                    Profile
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    disabled={signingOut}
+                    className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs transition-colors text-left hover:bg-white/5 disabled:opacity-50"
+                    style={{ color: "#ef4444" }}
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    {signingOut ? "Signing out…" : "Sign Out"}
                   </button>
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-700/50">
-            <Link
-              href="/dashboard/profile"
-              className="flex items-center gap-2 pr-1 hover:opacity-80 transition-opacity"
-            >
-              <div className="hidden sm:block text-right">
-                <p className="text-sm font-medium text-slate-200 leading-none">{user.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5 leading-none">{user.email}</p>
-              </div>
-              <div className="w-8 h-8 bg-orange-500/20 border border-orange-500/30 rounded-full flex items-center justify-center text-orange-400 text-xs font-bold shrink-0">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            </Link>
-            <button
-              onClick={handleLogout}
-              disabled={signingOut}
-              className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-150"
-              title="Sign out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </header>
 
       {/* Mobile Navigation Overlay */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-md">
+        <div
+          className="md:hidden fixed inset-0 z-50 backdrop-blur-md"
+          style={{ background: "rgba(10,10,15,0.97)" }}
+        >
           <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between p-4 border-b border-slate-800">
-              <span className="font-bold text-white text-lg">
-                Concept<span className="text-orange-400">Leak</span>
+            <div
+              className="flex items-center justify-between p-4"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <span className="font-bold text-lg" style={{ color: "#ebebf0" }}>
+                Concept<span style={{ color: "#f97316" }}>Leak</span>
               </span>
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="p-2 text-slate-400 hover:text-white"
+                style={{ color: "#7b7b8d" }}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -159,7 +180,8 @@ export default function TopBar({ user }: TopBarProps) {
                   key={href}
                   href={href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:bg-white/5"
+                  style={{ color: "#7b7b8d" }}
                 >
                   <Icon className="w-5 h-5" />
                   {label}
@@ -168,16 +190,18 @@ export default function TopBar({ user }: TopBarProps) {
               <Link
                 href="/dashboard/profile"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:bg-white/5"
+                style={{ color: "#7b7b8d" }}
               >
                 <User className="w-5 h-5" />
                 Profile
               </Link>
             </nav>
-            <div className="p-4 border-t border-slate-800">
+            <div className="p-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                className="flex items-center gap-2 w-full px-4 py-3 rounded-xl transition-colors hover:bg-red-500/10"
+                style={{ color: "#ef4444" }}
               >
                 <LogOut className="w-5 h-5" />
                 Sign Out

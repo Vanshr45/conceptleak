@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Send, Bot, User, Database, Zap, AlertTriangle,
-  Info, Code2, Loader2
+  Info, Code2, Loader2, Mic, Paperclip
 } from "lucide-react";
 import type { ChatMessage, Dataset } from "@/types";
 
@@ -17,17 +17,29 @@ const QUICK_PROMPTS = [
   { icon: Database, label: "Column Analysis", prompt: "Analyze the columns in my active dataset for leakage." },
 ];
 
+const QUICK_COMMANDS = [
+  { label: "/REDACT", prompt: "Redact all PII columns from my dataset." },
+  { label: "/FILTER_LEAKS", prompt: "Filter and list only the leaking columns." },
+  { label: "/SUMMARIZE_RISKS", prompt: "Summarize all detected risks in my dataset." },
+];
+
 function TypingIndicator() {
   return (
     <div className="flex items-end gap-3 animate-fade-in">
-      <div className="w-7 h-7 bg-orange-500/20 border border-orange-500/30 rounded-full flex items-center justify-center shrink-0">
-        <Bot className="w-3.5 h-3.5 text-orange-400" />
+      <div
+        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+        style={{ background: "rgba(249,115,22,0.2)", border: "1px solid rgba(249,115,22,0.3)" }}
+      >
+        <Bot className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
       </div>
-      <div className="glass rounded-2xl rounded-bl-sm px-4 py-3">
+      <div
+        className="rounded-2xl rounded-bl-sm px-4 py-3"
+        style={{ background: "#1a1a24", border: "1px solid rgba(255,255,255,0.06)" }}
+      >
         <div className="flex items-center gap-1.5">
-          <span className="typing-dot w-1.5 h-1.5 bg-orange-400 rounded-full" />
-          <span className="typing-dot w-1.5 h-1.5 bg-orange-400 rounded-full" />
-          <span className="typing-dot w-1.5 h-1.5 bg-orange-400 rounded-full" />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
         </div>
       </div>
     </div>
@@ -69,7 +81,7 @@ I'm your intelligent data science assistant, specialized in detecting **concept 
 - Providing actionable remediation steps
 - Answering questions about ML data integrity
 
-${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk assessment!" : "Select a dataset from the dropdown above to get a focused analysis, or ask me anything about concept leakage!"}`,
+${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk assessment!" : "Select a dataset from the left panel to get a focused analysis, or ask me anything about concept leakage!"}`,
         sender: "bot",
         timestamp: new Date().toISOString(),
       },
@@ -191,136 +203,357 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
     }
   }
 
+  // Derived findings for left panel (from activeDataset)
+  const privacyScore = activeDataset ? 100 - (activeDataset.riskScore || 0) : null;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-4xl mx-auto animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            <Bot className="w-5 h-5 text-orange-400" />
-            AI Chat
-          </h1>
-          <p className="text-slate-500 text-xs mt-0.5">Powered by Llama 3.3</p>
-        </div>
-
-        {/* Dataset selector */}
-        <select
-          value={activeDatasetId || ""}
-          onChange={(e) => setActiveDatasetId(e.target.value || undefined)}
-          className="glass rounded-xl px-3 py-2 text-sm text-slate-300 border border-slate-700/50 focus:outline-none focus:ring-2 focus:ring-orange-500/50 bg-transparent max-w-[200px] truncate"
-        >
-          <option value="">No dataset selected</option>
-          {datasets.map((d) => (
-            <option key={d.id} value={d.id} className="bg-slate-800">
-              {d.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Active dataset badge */}
-      {activeDataset && (
-        <div className="flex items-center gap-2 px-3 py-2 glass border border-blue-500/20 rounded-xl mb-3 shrink-0">
-          <Database className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-          <p className="text-xs text-slate-300 truncate">
-            Active: <span className="text-blue-300 font-medium">{activeDataset.name}</span>
-            <span className="text-slate-500 ml-2">{activeDataset.rowCount?.toLocaleString()} rows · Risk: {activeDataset.riskScore}/100</span>
-          </p>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto glass rounded-2xl p-4 space-y-4 mb-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex items-end gap-3 animate-fade-in ${msg.sender === "user" ? "flex-row-reverse" : "flex-row"}`}
-          >
-            {/* Avatar */}
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-              msg.sender === "user"
-                ? "bg-orange-500/20 border border-orange-500/30"
-                : "bg-blue-500/20 border border-blue-500/30"
-            }`}>
-              {msg.sender === "user"
-                ? <User className="w-3.5 h-3.5 text-orange-400" />
-                : <Bot className="w-3.5 h-3.5 text-blue-400" />
-              }
-            </div>
-
-            {/* Bubble */}
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                msg.sender === "user"
-                  ? "bg-orange-500/20 border border-orange-500/30 rounded-br-sm text-white"
-                  : "glass rounded-bl-sm"
-              }`}
+    <div
+      className="flex h-[calc(100vh-3.5rem)] overflow-hidden animate-fade-in"
+      style={{ margin: "-1.5rem -1.5rem -2rem" }}
+    >
+      {/* ── LEFT PANEL ── */}
+      <div
+        className="hidden lg:flex flex-col w-[280px] shrink-0 overflow-y-auto"
+        style={{
+          background: "#0d0d14",
+          borderRight: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <div className="p-4 space-y-4">
+          {/* CONTEXT */}
+          <div>
+            <p className="section-label mb-2">Context</p>
+            <select
+              value={activeDatasetId || ""}
+              onChange={(e) => setActiveDatasetId(e.target.value || undefined)}
+              className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none transition-colors"
+              style={{
+                background: "#1a1a24",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#ebebf0",
+              }}
             >
-              {msg.sender === "bot" ? (
-                <div className="chat-markdown text-slate-200 text-sm leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+              <option value="" style={{ background: "#1a1a24" }}>
+                No dataset selected
+              </option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id} style={{ background: "#1a1a24" }}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Stats */}
+          {activeDataset && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div
+                  className="rounded-xl p-3 text-center"
+                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-lg font-bold" style={{ color: "#ebebf0" }}>
+                    {activeDataset.rowCount?.toLocaleString() || "—"}
+                  </p>
+                  <p className="section-label mt-0.5">ROWS</p>
                 </div>
-              ) : (
-                <p className="text-sm text-white">{msg.text}</p>
+                <div
+                  className="rounded-xl p-3 text-center"
+                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <p className="text-lg font-bold" style={{ color: "#ebebf0" }}>
+                    {activeDataset.columnCount || "—"}
+                  </p>
+                  <p className="section-label mt-0.5">COLS</p>
+                </div>
+              </div>
+
+              {privacyScore !== null && (
+                <div
+                  className="rounded-xl p-3"
+                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="section-label">PRIVACY SCORE</p>
+                    <span
+                      className="text-sm font-bold"
+                      style={{
+                        color:
+                          privacyScore >= 70
+                            ? "#22c55e"
+                            : privacyScore >= 40
+                            ? "#eab308"
+                            : "#ef4444",
+                      }}
+                    >
+                      {privacyScore}%
+                    </span>
+                  </div>
+                  <div
+                    className="h-1.5 rounded-full overflow-hidden"
+                    style={{ background: "rgba(255,255,255,0.06)" }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${privacyScore}%`,
+                        background:
+                          privacyScore >= 70
+                            ? "#22c55e"
+                            : privacyScore >= 40
+                            ? "#eab308"
+                            : "#ef4444",
+                      }}
+                    />
+                  </div>
+                </div>
               )}
-              <p className={`text-[10px] mt-1.5 ${msg.sender === "user" ? "text-orange-300/60 text-right" : "text-slate-600"}`}>
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
+
+          {/* FINDINGS */}
+          <div>
+            <p className="section-label mb-2">Findings</p>
+            {activeDataset ? (
+              <div className="space-y-1">
+                {[
+                  {
+                    color: activeDataset.riskScore && activeDataset.riskScore >= 70 ? "#ef4444" : "#f97316",
+                    label: "Target Leakage Risk",
+                    sub: `Score: ${activeDataset.riskScore || 0}/100`,
+                  },
+                  {
+                    color: "#22c55e",
+                    label: "Schema Validated",
+                    sub: `${activeDataset.columnCount || 0} columns parsed`,
+                  },
+                  {
+                    color: "#f97316",
+                    label: "PII Scan",
+                    sub: "Review recommended",
+                  },
+                ].map((item, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg"
+                    style={{ background: "rgba(255,255,255,0.02)" }}
+                  >
+                    <div
+                      className="w-2 h-2 rounded-full mt-1 shrink-0"
+                      style={{ background: item.color }}
+                    />
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: "#ebebf0" }}>
+                        {item.label}
+                      </p>
+                      <p className="text-[11px] mt-0.5" style={{ color: "#4a4a5a" }}>
+                        {item.sub}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs" style={{ color: "#4a4a5a" }}>
+                Select a dataset to see findings
+              </p>
+            )}
+          </div>
+
+          {/* AGENT STATUS */}
+          <div>
+            <p className="section-label mb-2">Agent Status</p>
+            <div
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg"
+              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)" }}
+            >
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: "#22c55e" }} />
+              <p className="text-xs font-semibold" style={{ color: "#22c55e" }}>
+                Active &amp; Syncing
               </p>
             </div>
           </div>
-        ))}
-
-        {sending && <TypingIndicator />}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Quick prompts */}
-      <div className="flex gap-2 mb-3 overflow-x-auto pb-1 shrink-0">
-        {QUICK_PROMPTS.map(({ icon: Icon, label, prompt }) => (
-          <button
-            key={label}
-            onClick={() => sendMessage(prompt)}
-            disabled={sending}
-            className="flex items-center gap-1.5 px-3 py-1.5 glass border border-slate-700/50 hover:border-orange-500/30 hover:bg-orange-500/5 rounded-xl text-xs text-slate-400 hover:text-orange-300 transition-all duration-150 whitespace-nowrap shrink-0 disabled:opacity-50"
-          >
-            <Icon className="w-3 h-3" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Input */}
-      <div className="glass rounded-2xl p-3 flex items-end gap-3 shrink-0">
-        <div className="w-7 h-7 bg-orange-500/10 border border-orange-500/20 rounded-full flex items-center justify-center shrink-0 self-end mb-1">
-          <Zap className="w-3.5 h-3.5 text-orange-400" />
         </div>
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask about concept leakage, data risks, or analysis…"
-          rows={1}
-          className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none focus:outline-none leading-relaxed max-h-32 overflow-y-auto"
-          style={{ minHeight: "24px" }}
-          onInput={(e) => {
-            const t = e.target as HTMLTextAreaElement;
-            t.style.height = "auto";
-            t.style.height = Math.min(t.scrollHeight, 128) + "px";
-          }}
-        />
-        <button
-          onClick={() => sendMessage(input)}
-          disabled={!input.trim() || sending}
-          className="w-9 h-9 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-all shrink-0 glow-orange-sm"
-        >
-          {sending
-            ? <Loader2 className="w-4 h-4 text-white animate-spin" />
-            : <Send className="w-4 h-4 text-white" />
-          }
-        </button>
       </div>
-      <p className="text-center text-[10px] text-slate-600 mt-2">Press Enter to send · Shift+Enter for new line</p>
+
+      {/* ── RIGHT PANEL ── */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden p-4">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto space-y-4 mb-3">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex items-end gap-3 animate-fade-in ${
+                msg.sender === "user" ? "flex-row-reverse" : "flex-row"
+              }`}
+            >
+              {/* Avatar */}
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                style={
+                  msg.sender === "user"
+                    ? {
+                        background: "rgba(249,115,22,0.2)",
+                        border: "1px solid rgba(249,115,22,0.3)",
+                      }
+                    : {
+                        background: "rgba(255,255,255,0.06)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }
+                }
+              >
+                {msg.sender === "user" ? (
+                  <User className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
+                ) : (
+                  <Bot className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
+                )}
+              </div>
+
+              {/* Bubble */}
+              <div
+                className="max-w-[80%] rounded-2xl px-4 py-3"
+                style={
+                  msg.sender === "user"
+                    ? {
+                        background: "rgba(249,115,22,0.12)",
+                        border: "1px solid rgba(249,115,22,0.25)",
+                        borderBottomRightRadius: "4px",
+                      }
+                    : {
+                        background: "#111118",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderBottomLeftRadius: "4px",
+                      }
+                }
+              >
+                {/* Header */}
+                <div
+                  className="flex items-center gap-2 mb-1.5 text-[10px] font-semibold tracking-[0.06em]"
+                  style={{ color: "#4a4a5a" }}
+                >
+                  {msg.sender === "bot" ? (
+                    <>
+                      <Bot className="w-3 h-3" style={{ color: "#f97316" }} />
+                      <span style={{ color: "#f97316" }}>AI CHAT</span>
+                      <span>·</span>
+                      <span>
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <span>USER</span>
+                    </>
+                  )}
+                </div>
+
+                {msg.sender === "bot" ? (
+                  <div className="chat-markdown text-sm leading-relaxed" style={{ color: "#ebebf0" }}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm" style={{ color: "#ebebf0" }}>
+                    {msg.text}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {sending && <TypingIndicator />}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Quick prompts */}
+        <div className="flex gap-2 mb-2 overflow-x-auto pb-1 shrink-0">
+          {QUICK_PROMPTS.map(({ icon: Icon, label, prompt }) => (
+            <button
+              key={label}
+              onClick={() => sendMessage(prompt)}
+              disabled={sending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors hover:opacity-80"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                color: "#7b7b8d",
+              }}
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Input area */}
+        <div
+          className="rounded-2xl p-3 shrink-0"
+          style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <div className="flex items-end gap-3">
+            <Paperclip className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "#4a4a5a" }} />
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about concept leakage, data risks, or analysis…"
+              rows={1}
+              className="flex-1 bg-transparent text-sm resize-none focus:outline-none leading-relaxed max-h-32 overflow-y-auto"
+              style={{ color: "#ebebf0", minHeight: "24px" }}
+              onInput={(e) => {
+                const t = e.target as HTMLTextAreaElement;
+                t.style.height = "auto";
+                t.style.height = Math.min(t.scrollHeight, 128) + "px";
+              }}
+            />
+            <Mic className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "#4a4a5a" }} />
+            <button
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || sending}
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 glow-orange-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "#f97316" }}
+            >
+              {sending ? (
+                <Loader2 className="w-4 h-4 text-white animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+
+          {/* Quick command chips */}
+          <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+            {QUICK_COMMANDS.map(({ label, prompt }) => (
+              <button
+                key={label}
+                onClick={() => sendMessage(prompt)}
+                disabled={sending}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider disabled:opacity-50 transition-colors hover:opacity-80"
+                style={{
+                  background: "rgba(249,115,22,0.08)",
+                  border: "1px solid rgba(249,115,22,0.2)",
+                  color: "#f97316",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-center text-[10px] mt-1.5" style={{ color: "#4a4a5a" }}>
+          Press Enter to send · Shift+Enter for new line
+        </p>
+      </div>
     </div>
   );
 }
