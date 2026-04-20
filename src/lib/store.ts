@@ -25,6 +25,9 @@ function toDataset(dataset: PrismaDataset): Dataset {
     previewRows: Array.isArray(dataset.previewRows)
       ? (dataset.previewRows as Record<string, unknown>[])
       : [],
+    allRows: Array.isArray(dataset.allRows)
+      ? (dataset.allRows as Record<string, unknown>[])
+      : [],
   };
 }
 
@@ -80,6 +83,7 @@ export async function addDataset(userId: string, dataset: Dataset): Promise<Data
         columnCount: dataset.columnCount ?? 0,
         columns: toJsonValue(dataset.columns ?? []),
         previewRows: toJsonValue(dataset.previewRows ?? []),
+        allRows: toJsonValue(dataset.allRows ?? []),
       },
     });
     return toDataset(created);
@@ -113,6 +117,7 @@ export async function updateDataset(
         ...(dataset.columnCount !== undefined ? { columnCount: dataset.columnCount } : {}),
         ...(dataset.columns !== undefined ? { columns: toJsonValue(dataset.columns) } : {}),
         ...(dataset.previewRows !== undefined ? { previewRows: toJsonValue(dataset.previewRows) } : {}),
+        ...(dataset.allRows !== undefined ? { allRows: toJsonValue(dataset.allRows) } : {}),
       },
     });
     return toDataset(updated);

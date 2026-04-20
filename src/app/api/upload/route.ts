@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
       columnCount: columns.length,
       columns,
       previewRows,
+      allRows,
     };
 
     const createdDataset = await addDataset(userId, dataset);

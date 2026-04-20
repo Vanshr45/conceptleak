@@ -12,6 +12,7 @@ export interface Dataset {
   columnCount?: number;
   columns?: string[];
   previewRows?: Record<string, unknown>[];
+  allRows?: Record<string, unknown>[];
 }
 
 export interface ChatMessage {

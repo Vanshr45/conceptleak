@@ -31,6 +31,7 @@ model Dataset {
   columnCount Int      @default(0)
   columns     Json     @default("[]")
   previewRows Json     @default("[]")
+  allRows     Json     @default("[]")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
