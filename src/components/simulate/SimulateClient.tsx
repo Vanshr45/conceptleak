@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  ArrowRight,
-  Check,
-  ChevronRight,
-  Loader2,
-  Play,
-} from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Loader2, Play } from "lucide-react";
 import type { SimulationResult } from "@/lib/simulator";
 import type { Dataset } from "@/types";
 
 type Status = "idle" | "running" | "complete" | "error";
 
-const TARGET_PATTERN = /target|label|y|outcome|class/i;
+const TARGET_PATTERN = /^(target|label|y|outcome|class|output|result|churn|fraud|default|survived|diagnosis|attrition|response|converted|purchased|clicked|subscribed|cancelled|death|event|readmitted|admitted|hired|promoted|approved|rejected|flagged|anomaly|defect|failure|success)$/i;
 const PROGRESS_STEPS = [
   "Preparing dataset...",
   "Training baseline model...",
@@ -34,21 +27,14 @@ function getRiskLabel(gap: number): string {
   return "LOW RISK";
 }
 
-function getImpactTextClass(impactScore: number): string {
-  if (impactScore > 10) return "text-red-400";
-  if (impactScore > 3) return "text-orange-400";
-  if (impactScore < 1) return "text-green-400";
-  return "text-slate-200";
-}
-
-function getActionClass(action: "REMOVE" | "REVIEW" | "KEEP"): string {
+function getActionStyle(action: "REMOVE" | "REVIEW" | "KEEP"): React.CSSProperties {
   if (action === "REMOVE") {
-    return "border border-red-500/30 bg-red-500/10 text-red-400";
+    return { background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444" };
   }
   if (action === "REVIEW") {
-    return "border border-yellow-500/30 bg-yellow-500/10 text-yellow-300";
+    return { background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)", color: "#eab308" };
   }
-  return "border border-green-500/30 bg-green-500/10 text-green-400";
+  return { background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", color: "#22c55e" };
 }
 
 export default function SimulateClient() {
@@ -56,14 +42,30 @@ export default function SimulateClient() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedTarget, setSelectedTarget] = useState("");
-  const [status, setStatus] = useState<Status>("idle");
-  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [status, setStatus] = useState<Status>(() => {
+    if (typeof window === "undefined") return "idle";
+    try {
+      const saved = sessionStorage.getItem("sim_result");
+      return saved ? "complete" : "idle";
+    } catch {
+      return "idle";
+    }
+  });
+  const [result, setResult] = useState<SimulationResult | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = sessionStorage.getItem("sim_result");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState("");
   const [visibleSteps, setVisibleSteps] = useState(0);
+  const previousDatasetId = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     fetch("/api/datasets")
       .then((r) => r.json())
       .then((d: { datasets?: Dataset[] }) => {
@@ -74,15 +76,8 @@ export default function SimulateClient() {
           setSelectedDatasetId((current) => current || nextDatasets[0].id);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setDatasets([]);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => { if (!cancelled) setDatasets([]); });
+    return () => { cancelled = true; };
   }, []);
 
   const selectedDataset = useMemo(
@@ -95,68 +90,66 @@ export default function SimulateClient() {
   useEffect(() => {
     if (!selectedDataset) {
       setSelectedTarget("");
+      previousDatasetId.current = null;
       return;
     }
-
-    const matchedTarget =
-      selectedDataset.columns?.find((column) => TARGET_PATTERN.test(column)) ??
-      "";
-
-    setSelectedTarget(matchedTarget);
-    setResult(null);
+    const autoTarget =
+      selectedDataset.columns?.find((col) => TARGET_PATTERN.test(col)) ??
+      selectedDataset.columns?.[selectedDataset.columns.length - 1] ?? "";
+    const datasetChanged =
+      previousDatasetId.current !== null && previousDatasetId.current !== selectedDataset.id;
+    setSelectedTarget(autoTarget);
     setError("");
-    setStatus("idle");
+    if (datasetChanged) {
+      sessionStorage.removeItem("sim_result");
+      setResult(null);
+      setStatus("idle");
+    }
+    previousDatasetId.current = selectedDataset.id;
   }, [selectedDataset]);
 
   useEffect(() => {
-    if (status !== "running") {
-      setVisibleSteps(0);
-      return;
-    }
-
+    if (status !== "running") { setVisibleSteps(0); return; }
     setVisibleSteps(1);
     const timers = PROGRESS_STEPS.slice(1).map((_, index) =>
       window.setTimeout(() => {
         setVisibleSteps((current) => Math.max(current, index + 2));
       }, (index + 1) * 1500)
     );
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
+    return () => { timers.forEach((timer) => window.clearTimeout(timer)); };
   }, [status]);
 
   async function runSimulation() {
     if (!selectedDatasetId || !selectedTarget) return;
-
     setStatus("running");
     setError("");
     setResult(null);
-
     try {
       const res = await fetch("/api/simulate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          datasetId: selectedDatasetId,
-          targetColumn: selectedTarget,
-        }),
+        body: JSON.stringify({ datasetId: selectedDatasetId, targetColumn: selectedTarget }),
       });
-      const data: { error?: string; result?: SimulationResult } =
-        await res.json();
-
+      const data: { error?: string; result?: SimulationResult } = await res.json();
       if (!res.ok || !data.result) {
         setError(data.error || "Simulation failed");
         setStatus("error");
         return;
       }
-
       setResult(data.result);
+      try { sessionStorage.setItem("sim_result", JSON.stringify(data.result)); } catch {}
       setStatus("complete");
     } catch {
       setError("Network error. Please try again.");
       setStatus("error");
     }
+  }
+
+  function resetSimulation() {
+    sessionStorage.removeItem("sim_result");
+    setResult(null);
+    setStatus("idle");
+    setError("");
   }
 
   const analyzedColumns = Math.max(
@@ -165,295 +158,361 @@ export default function SimulateClient() {
   );
 
   const sortedImpacts = useMemo(
-    () =>
-      [...(result?.columnImpacts ?? [])].sort(
-        (left, right) => right.impactScore - left.impactScore
-      ),
+    () => [...(result?.columnImpacts ?? [])].sort((l, r) => r.impactScore - l.impactScore),
     [result]
   );
 
-  const removedCount = sortedImpacts.filter(
-    (impact) => impact.recommendation === "REMOVE"
-  ).length;
+  const improvement = Math.round(
+    ((result?.baselineTestAccuracy ?? 0) - (result?.cleanTestAccuracy ?? 0)) * 10
+  ) / 10;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <p
+          className="text-xs font-semibold uppercase tracking-wide"
+          style={{ color: "var(--text-muted)" }}
+        >
           Model Readiness
         </p>
-        <h1 className="text-3xl font-bold text-white sm:text-4xl">
-          Train Risk Simulator
+        <h1 className="text-3xl font-bold sm:text-4xl" style={{ color: "var(--text)" }}>
+          Training Risk Simulator
         </h1>
-        <p className="max-w-3xl text-sm text-slate-400 sm:text-base">
+        <p className="max-w-3xl text-sm sm:text-base" style={{ color: "var(--text-secondary)" }}>
           See exactly how much accuracy you lose in production{" "}
-          <span className="font-semibold text-orange-400">before you train</span>
+          <span className="font-semibold" style={{ color: "var(--accent)" }}>
+            before you train
+          </span>
         </p>
       </div>
 
+      {/* Dataset + Target selectors */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-700/50 bg-[#141420] p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <section
+          className="rounded-xl p-5"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color: "var(--text-muted)" }}>
             Select Dataset
           </p>
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4">
             <select
               value={selectedDatasetId}
-              onChange={(event) => setSelectedDatasetId(event.target.value)}
-              className="w-full rounded-xl border border-slate-700/50 bg-[#0f1118] px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400"
+              onChange={(e) => setSelectedDatasetId(e.target.value)}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition"
+              style={{
+                background: "var(--bg)",
+                border: "1px solid var(--border-strong)",
+                color: "var(--text)",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; }}
             >
               <option value="">Choose a dataset</option>
               {datasets.map((dataset) => (
                 <option key={dataset.id} value={dataset.id}>
-                  {dataset.name}{" "}
-                  {typeof dataset.riskScore === "number"
-                    ? `· Risk ${dataset.riskScore}`
-                    : ""}
+                  {dataset.name}
+                  {typeof dataset.riskScore === "number" ? ` · Risk ${dataset.riskScore}` : ""}
                 </option>
               ))}
             </select>
 
             {selectedDataset ? (
-              <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
+              <div
+                className="rounded-xl p-4"
+                style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)" }}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
                       {selectedDataset.name}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {(selectedDataset.rowCount ?? 0).toLocaleString()} rows
-                      {" · "}
-                      {(selectedDataset.columnCount ??
-                        selectedDataset.columns?.length ??
-                        0)
-                        .toString()}{" "}
-                      columns
+                    <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                      {(selectedDataset.rowCount ?? 0).toLocaleString()} rows ·{" "}
+                      {(selectedDataset.columnCount ?? selectedDataset.columns?.length ?? 0).toString()} columns
                     </p>
                   </div>
-                  {typeof selectedDataset.riskScore === "number" ? (
-                    <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-400">
+                  {typeof selectedDataset.riskScore === "number" && (
+                    <span
+                      className="rounded-full px-3 py-1 text-xs font-semibold shrink-0"
+                      style={{
+                        background: "var(--accent-muted)",
+                        border: "1px solid var(--accent-muted-border)",
+                        color: "var(--accent)",
+                      }}
+                    >
                       Risk {selectedDataset.riskScore}
                     </span>
-                  ) : null}
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-700/50 bg-slate-900/20 p-4 text-sm text-slate-400">
+              <div
+                className="rounded-xl border-2 border-dashed p-4 text-sm"
+                style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+              >
                 Pick one of your uploaded datasets to begin.
               </div>
             )}
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-700/50 bg-[#141420] p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <section
+          className="rounded-xl p-5"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide mb-4" style={{ color: "var(--text-muted)" }}>
             Target Column
           </p>
-          <div className="mt-4 space-y-4">
+          <div className="space-y-4">
             <select
               value={selectedTarget}
-              onChange={(event) => setSelectedTarget(event.target.value)}
+              onChange={(e) => setSelectedTarget(e.target.value)}
               disabled={!selectedDataset}
-              className="w-full rounded-xl border border-slate-700/50 bg-[#0f1118] px-4 py-3 text-sm text-white outline-none transition focus:border-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: "var(--bg)",
+                border: "1px solid var(--border-strong)",
+                color: "var(--text)",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; }}
             >
               <option value="">
                 {selectedDataset ? "Choose target column" : "Select a dataset first"}
               </option>
               {availableColumns.map((column) => (
-                <option key={column} value={column}>
-                  {column}
-                </option>
+                <option key={column} value={column}>{column}</option>
               ))}
             </select>
-            <p className="text-sm text-slate-400">
+
+            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
               The column your model will predict
             </p>
-            {selectedTarget ? (
-              <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-3 text-sm text-orange-300">
+
+            {selectedTarget && (
+              <div
+                className="rounded-xl px-4 py-3 text-sm"
+                style={{
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-muted-border)",
+                  color: "var(--accent)",
+                }}
+              >
                 Auto-selected target:{" "}
-                <span className="font-mono text-orange-400">{selectedTarget}</span>
+                <span className="font-mono font-semibold">{selectedTarget}</span>
               </div>
-            ) : null}
+            )}
           </div>
         </section>
       </div>
 
+      {/* Running state */}
       {status === "running" ? (
-        <section className="rounded-xl border border-slate-700/50 bg-[#141420] p-8 text-center">
-          <Loader2 className="mx-auto h-10 w-10 animate-spin text-orange-400" />
-          <h2 className="mt-4 text-xl font-semibold text-white">
+        <section
+          className="rounded-xl p-8 text-center"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        >
+          <Loader2 className="mx-auto h-10 w-10 animate-spin" style={{ color: "var(--accent)" }} />
+          <h2 className="mt-4 text-xl font-semibold" style={{ color: "var(--text)" }}>
             Running simulation...
           </h2>
           <div className="mx-auto mt-6 max-w-md space-y-3 text-left">
             {PROGRESS_STEPS.slice(0, visibleSteps).map((step) => (
               <div
                 key={step}
-                className="flex items-center gap-3 rounded-xl border border-slate-700/50 bg-slate-900/40 px-4 py-3 text-sm text-slate-200"
+                className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
+                style={{
+                  background: "var(--surface-elevated)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text)",
+                }}
               >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500/15 text-orange-400">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full shrink-0"
+                  style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+                >
                   <Check className="h-4 w-4" />
                 </span>
                 <span>{step}</span>
               </div>
             ))}
           </div>
-          <p className="mt-5 text-sm text-slate-400">This takes 5-15 seconds</p>
+          <p className="mt-5 text-sm" style={{ color: "var(--text-secondary)" }}>
+            This takes 5–15 seconds
+          </p>
         </section>
       ) : (
-        <button
-          onClick={runSimulation}
-          disabled={!selectedDatasetId || !selectedTarget}
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-orange-500 px-6 py-4 text-base font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Play className="h-5 w-5 fill-current" />
-          <span>Run Simulation - Analyze {analyzedColumns} columns</span>
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={runSimulation}
+            disabled={!selectedDatasetId || !selectedTarget}
+            className="flex w-full items-center justify-center gap-3 rounded-xl px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: "var(--accent)" }}
+          >
+            <Play className="h-5 w-5 fill-current" />
+            Run Simulation — Analyze {analyzedColumns} columns
+          </button>
+          {status === "complete" && (
+            <button
+              onClick={resetSimulation}
+              className="rounded-lg px-3 py-1.5 text-xs transition-colors whitespace-nowrap"
+              style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            >
+              Run New
+            </button>
+          )}
+        </div>
       )}
 
-      {status === "error" ? (
-        <section className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 animate-fade-in">
+      {/* Error */}
+      {status === "error" && (
+        <section
+          className="rounded-xl p-5 animate-fade-in"
+          style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)" }}
+        >
           <div className="flex items-start gap-4">
-            <div className="rounded-full bg-red-500/15 p-3 text-red-400">
+            <div className="rounded-full p-3" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div className="flex-1 space-y-3">
-              <p className="text-sm font-semibold uppercase tracking-wide text-red-300">
+              <p className="text-sm font-semibold uppercase tracking-wide" style={{ color: "#ef4444" }}>
                 Simulation Error
               </p>
-              <p className="text-sm text-red-100">{error}</p>
+              <p className="text-sm" style={{ color: "var(--text)" }}>{error}</p>
               <button
-                onClick={() => {
-                  setStatus("idle");
-                  setError("");
+                onClick={() => { setStatus("idle"); setError(""); }}
+                className="rounded-xl px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+                style={{
+                  background: "rgba(239,68,68,0.1)",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  color: "#ef4444",
                 }}
-                className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/20"
               >
                 Try Again
               </button>
             </div>
           </div>
         </section>
-      ) : null}
+      )}
 
-      {status === "complete" && result ? (
+      {/* Results */}
+      {status === "complete" && result && (
         <div className="space-y-6 animate-fade-in">
+          {/* Before / After */}
           <section className="grid gap-4 xl:grid-cols-[1fr_auto_1fr]">
+            {/* Before */}
             <div
-              className={`rounded-xl border p-5 ${
-                result.baselineGap > 20
-                  ? "border-red-500/30 bg-red-500/10"
-                  : "border-slate-700/50 bg-[#141420]"
-              }`}
+              className="rounded-xl p-5"
+              style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.18)" }}
             >
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Baseline
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                Before Cleaning
               </p>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Training Accuracy
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.baselineTrainAccuracy)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Test Accuracy
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.baselineTestAccuracy)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Gap
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.baselineGap)}
-                  </p>
-                  <p
-                    className={`mt-2 text-sm font-semibold ${
-                      result.baselineGap > 20
-                        ? "text-red-400"
-                        : result.baselineGap > 10
-                          ? "text-orange-400"
-                          : result.baselineGap > 5
-                            ? "text-yellow-300"
-                            : "text-green-400"
-                    }`}
-                  >
-                    {getRiskLabel(result.baselineGap)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center rounded-xl border border-slate-700/50 bg-[#141420] px-6 py-5 text-center text-sm font-semibold text-slate-300">
-              <span>After removing flagged columns</span>
-              <ArrowRight className="ml-3 h-5 w-5 text-orange-400" />
-            </div>
-
-            <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Clean
+              <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+                With leaking + noisy columns
               </p>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Training Accuracy
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.cleanTrainAccuracy)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Test Accuracy
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.cleanTestAccuracy)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Gap
-                  </p>
-                  <p className="mt-1 text-3xl font-bold text-white">
-                    {formatPercent(result.cleanGap)}
-                  </p>
-                  {result.cleanGap < 5 ? (
-                    <p className="mt-2 text-sm font-semibold text-green-400">
-                      SAFE TO TRAIN
+              <div className="space-y-4">
+                {[
+                  { label: "Training Accuracy", value: result.cleanTrainAccuracy },
+                  { label: "Test Accuracy", value: result.cleanTestAccuracy },
+                  { label: "Gap", value: result.cleanGap },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                      {label}
                     </p>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-slate-700/50 bg-[#141420] p-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-white">
-                  Column Impact Ranking
-                </h2>
-                <p className="text-sm text-slate-400">
-                  {sortedImpacts.length} columns analyzed
+                    <p
+                      className="text-3xl font-bold"
+                      style={{ color: result.cleanGap > 10 ? "#ef4444" : "var(--text)" }}
+                    >
+                      {formatPercent(value)}
+                    </p>
+                  </div>
+                ))}
+                <p className="text-sm font-semibold" style={{ color: "#ef4444" }}>
+                  {getRiskLabel(result.cleanGap)}
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 overflow-x-auto">
+            {/* Improvement arrow */}
+            <div
+              className="flex flex-col items-center justify-center gap-3 rounded-xl p-6"
+              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            >
+              <div className="text-4xl" style={{ color: "var(--text-muted)" }}>→</div>
+              <div className="text-center">
+                <p
+                  className="font-bold text-lg"
+                  style={{ color: improvement >= 0 ? "#22c55e" : "#ef4444" }}
+                >
+                  {improvement >= 0 ? "+" : ""}{improvement}%
+                </p>
+                <p className="text-sm font-semibold" style={{ color: "#22c55e" }}>
+                  accuracy gained
+                </p>
+                <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                  after cleaning
+                </p>
+              </div>
+            </div>
+
+            {/* After */}
+            <div
+              className="rounded-xl p-5"
+              style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.18)" }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                After Cleaning
+              </p>
+              <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+                Bad columns removed
+              </p>
+              <div className="space-y-4">
+                {[
+                  { label: "Training Accuracy", value: result.baselineTrainAccuracy },
+                  { label: "Test Accuracy", value: result.baselineTestAccuracy },
+                  { label: "Gap", value: result.baselineGap },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                      {label}
+                    </p>
+                    <p className="text-3xl font-bold" style={{ color: "#22c55e" }}>
+                      {formatPercent(value)}
+                    </p>
+                  </div>
+                ))}
+                <p className="text-sm font-semibold" style={{ color: "#22c55e" }}>
+                  {result.baselineGap < 5 ? "SAFE TO TRAIN" : "IMPROVED"}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* Column impact table */}
+          <section
+            className="rounded-xl p-5"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <h2 className="text-xl font-semibold mb-1" style={{ color: "var(--text)" }}>
+              Column Impact Ranking
+            </h2>
+            <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+              {sortedImpacts.length} columns analyzed
+            </p>
+            <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700/50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Column</th>
-                    <th className="px-4 py-3">Leakage Type</th>
-                    <th className="px-4 py-3">Impact</th>
-                    <th className="px-4 py-3">Before Gap</th>
-                    <th className="px-4 py-3">After Gap</th>
-                    <th className="px-4 py-3">Action</th>
+                  <tr
+                    className="text-xs font-semibold uppercase tracking-wide"
+                    style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)" }}
+                  >
+                    {["Column", "Leakage Type", "Accuracy Gain", "Before Gap", "After Gap", "Action"].map((h) => (
+                      <th key={h} className="px-4 py-3">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -461,34 +520,40 @@ export default function SimulateClient() {
                     sortedImpacts.map((impact) => (
                       <tr
                         key={impact.column}
-                        className="border-b border-slate-800/80 last:border-b-0"
+                        style={{ borderBottom: "1px solid var(--border)" }}
                       >
-                        <td className="px-4 py-4 font-mono text-orange-400">
+                        <td className="px-4 py-4 font-mono" style={{ color: "var(--accent)" }}>
                           {impact.column}
                         </td>
                         <td className="px-4 py-4">
-                          <span className="rounded-full border border-slate-700/60 bg-slate-900/60 px-3 py-1 text-xs font-medium text-slate-300">
+                          <span
+                            className="rounded-full px-3 py-1 text-xs font-medium"
+                            style={{
+                              background: "var(--surface-elevated)",
+                              border: "1px solid var(--border)",
+                              color: "var(--text-secondary)",
+                            }}
+                          >
                             {impact.leakageType}
                           </span>
                         </td>
                         <td
-                          className={`px-4 py-4 font-semibold ${getImpactTextClass(
-                            impact.impactScore
-                          )}`}
+                          className="px-4 py-4 font-semibold"
+                          style={{ color: impact.impactScore < 0 ? "#22c55e" : "var(--text-secondary)" }}
                         >
-                          {formatPercent(impact.impactScore)}
+                          {impact.impactScore < 0 ? "+" : ""}
+                          {formatPercent(impact.impactScore * -1)}
                         </td>
-                        <td className="px-4 py-4 text-slate-300">
+                        <td className="px-4 py-4" style={{ color: "var(--text-secondary)" }}>
                           {formatPercent(impact.gapBefore)}
                         </td>
-                        <td className="px-4 py-4 text-slate-300">
+                        <td className="px-4 py-4" style={{ color: "var(--text-secondary)" }}>
                           {formatPercent(impact.gapAfter)}
                         </td>
                         <td className="px-4 py-4">
                           <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getActionClass(
-                              impact.recommendation
-                            )}`}
+                            className="rounded-full px-3 py-1 text-xs font-semibold"
+                            style={getActionStyle(impact.recommendation)}
                           >
                             {impact.recommendation}
                           </span>
@@ -497,10 +562,7 @@ export default function SimulateClient() {
                     ))
                   ) : (
                     <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-8 text-center text-slate-400"
-                      >
+                      <td colSpan={6} className="px-4 py-8 text-center" style={{ color: "var(--text-secondary)" }}>
                         No flagged columns were returned by the simulation.
                       </td>
                     </tr>
@@ -510,37 +572,47 @@ export default function SimulateClient() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-700/50 bg-[#141420] p-5">
-            <p className="text-sm text-slate-300">
-              Simulation complete. Removing {removedCount} columns reduces your
-              production accuracy gap from {formatPercent(result.baselineGap)} to{" "}
-              {formatPercent(result.cleanGap)}. Your model goes from{" "}
-              {formatPercent(result.baselineTestAccuracy)} test accuracy to{" "}
-              {formatPercent(result.cleanTestAccuracy)}.
-            </p>
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          {/* Summary */}
+          <section
+            className="rounded-xl p-5"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+              {improvement > 0 ? (
+                <p>
+                  After cleaning your dataset, accuracy improved from{" "}
+                  <strong style={{ color: "#ef4444" }}>{result.cleanTestAccuracy}%</strong> to{" "}
+                  <strong style={{ color: "#22c55e" }}>{result.baselineTestAccuracy}%</strong>.
+                </p>
+              ) : (
+                <p>No significant improvement detected. Your dataset appears clean — safe to train.</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={() =>
-                  router.push(`/dashboard/chat?dataset=${selectedDatasetId}`)
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-400"
+                onClick={() => router.push(`/dashboard/chat?dataset=${selectedDatasetId}`)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+                style={{ background: "var(--accent)" }}
               >
-                <span>Discuss findings with AI</span>
+                Discuss findings with AI
                 <ChevronRight className="h-4 w-4" />
               </button>
               <button
-                onClick={() =>
-                  router.push(`/dashboard/insights?dataset=${selectedDatasetId}`)
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700/50 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:border-orange-400/40 hover:text-white"
+                onClick={() => router.push(`/dashboard/insights?dataset=${selectedDatasetId}`)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition hover:opacity-80"
+                style={{
+                  background: "var(--surface-elevated)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-secondary)",
+                }}
               >
-                <span>View Leakage Report</span>
+                View Leakage Report
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </section>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

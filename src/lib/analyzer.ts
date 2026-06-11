@@ -104,7 +104,7 @@ export function analyzeDataset(
   const targetNums = targetCol ? toNumbers(colValues[targetCol]) : [];
 
   // ── Column name patterns (still useful as a signal) ───────────────────────
-  const idPattern = /^(id|uuid|guid|index|row_id|record_id|pk|primary_key)$/i;
+  const idPattern = /(^id$|_id$|id_|^uuid|^guid|customerid|customer_id|userid|user_id|employeeid|employee_id|passengerid|passenger_id|^index$|row_id|record_id|^pk$|primary_key|^no$|^number$|^num$)/i;
   const piiPattern = /(email|phone|address|ssn|passport|credit|card|dob|birth|name|gender)/i;
 
   columns.forEach((col, i) => {
@@ -115,6 +115,21 @@ export function analyzeDataset(
     const missing = missingRatio(values);
     const uniqueness = uniquenessRatio(values);
     void stddev(nums);
+
+    // High uniqueness non-numeric = likely ID column
+    if (uniqueness > 0.8 && nums.length < rowCount * 0.3) {
+      const score = Math.round(80 + uniqueness * 15);
+      insights.push({
+        id: `insight-${i}-id`,
+        feature: col,
+        riskLevel: "CRITICAL",
+        score: Math.min(score, 98),
+        description: `"${col}" has ${Math.round(uniqueness * 100)}% unique values across ${rowCount.toLocaleString()} rows — almost certainly an identifier. Models trained with this feature memorize row identities instead of learning patterns, causing 0% generalization to new data.`,
+        affectedRecords: Math.floor(rowCount * uniqueness),
+        leakageType: "Direct ID Leakage",
+      });
+      return;
+    }
 
     // ── 1. Direct ID Leakage ───────────────────────────────────────────────
     if (idPattern.test(col) || (uniqueness > 0.95 && nums.length > rowCount * 0.8)) {
@@ -202,6 +217,71 @@ export function analyzeDataset(
         affectedRecords: Math.floor(rowCount * missing),
         leakageType: "Preprocessing Leakage",
       });
+      return;
+    }
+
+    // ── 6. High cardinality numeric noise ────────────────────────────────
+    if (
+      nums.length > rowCount * 0.7 &&
+      uniqueness > 0.85 &&
+      col !== targetCol
+    ) {
+      const std = stddev(nums);
+      const mn = mean(nums);
+      const cv = mn !== 0 ? Math.abs(std / mn) : std;
+      if (cv > 0.3) {
+        insights.push({
+          id: `insight-${i}-noise-num`,
+          feature: col,
+          riskLevel: "MEDIUM",
+          score: 52,
+          description: `"${col}" has ${Math.round(uniqueness * 100)}% unique numeric values with high variance — likely random noise. Noise features confuse ML models and reduce generalization.`,
+          affectedRecords: rowCount,
+          leakageType: "Noise / Irrelevant Feature",
+        });
+        return;
+      }
+    }
+
+    // ── 7. High cardinality categorical noise ────────────────────────────
+    if (
+      nums.length < rowCount * 0.1 &&
+      uniqueness > 0.5 &&
+      uniqueness < 0.95 &&
+      col !== targetCol &&
+      !piiPattern.test(col) &&
+      !idPattern.test(col)
+    ) {
+      const nonNumericUnique = new Set(
+        values.filter(v => v !== "" && isNaN(parseFloat(v)))
+      ).size;
+      if (nonNumericUnique > 10) {
+        insights.push({
+          id: `insight-${i}-noise-cat`,
+          feature: col,
+          riskLevel: "MEDIUM",
+          score: 48,
+          description: `"${col}" has ${nonNumericUnique} unique categorical values with no clear pattern — likely noise or an irrelevant identifier that will hurt model generalization.`,
+          affectedRecords: rowCount,
+          leakageType: "Noise / Irrelevant Feature",
+        });
+        return;
+      }
+    }
+
+    // ── 8. Pattern-based noise names ─────────────────────────────────────
+    const noisePattern = /(noise|random|dummy|temp|test|ref|code|flag|misc|junk|filler|placeholder)/i;
+    if (noisePattern.test(col) && col !== targetCol) {
+      insights.push({
+        id: `insight-${i}-noise-name`,
+        feature: col,
+        riskLevel: "MEDIUM",
+        score: 50,
+        description: `"${col}" name suggests it may be a noise, reference, or irrelevant column. These features add no predictive signal and hurt model performance.`,
+        affectedRecords: rowCount,
+        leakageType: "Noise / Irrelevant Feature",
+      });
+      return;
     }
   });
 

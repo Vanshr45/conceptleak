@@ -33,16 +33,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Dataset not found" }, { status: 404 });
     }
 
-    const rawRows = Array.isArray(dataset.allRows) && dataset.allRows.length > 0
+    const allRows = Array.isArray(dataset.allRows)
       ? (dataset.allRows as Record<string, unknown>[])
-      : (dataset.previewRows as Record<string, unknown>[]) ?? [];
+      : [];
 
-    if (rawRows.length === 0) {
+    if (allRows.length <= 5) {
       return NextResponse.json(
-        { error: "Dataset has no rows to simulate" },
+        {
+          error:
+            "This dataset was uploaded before full-row storage was added. Please delete it and re-upload to run a simulation.",
+        },
         { status: 400 }
       );
     }
+
+    const rawRows = allRows;
 
     if (!dataset.columns?.includes(targetColumn)) {
       return NextResponse.json(

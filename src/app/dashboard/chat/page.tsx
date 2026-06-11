@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "AI Chat" };
 
 export default function ChatPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 text-orange-400 animate-spin" /></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} /></div>}>
       <ChatClient />
     </Suspense>
   );

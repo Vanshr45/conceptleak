@@ -3,23 +3,25 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, User, Bell, Menu, X, LayoutDashboard, Database, MessageSquare, BarChart3, Upload } from "lucide-react";
-
-// ... existing code ...
+import {
+  LogOut, User, Menu, X, LayoutDashboard, Database,
+  MessageSquare, BarChart3, Upload, Sun, Moon,
+} from "lucide-react";
 
 const PAGE_TITLES: Record<string, string> = {
-  "/dashboard": "Dashboard",
+  "/dashboard":          "Dashboard",
   "/dashboard/datasets": "Datasets",
-  "/dashboard/chat": "AI Chat",
+  "/dashboard/chat":     "AI Chat",
   "/dashboard/insights": "Insights",
-  "/dashboard/profile": "Profile",
+  "/dashboard/simulate": "Simulator",
+  "/dashboard/profile":  "Profile",
   "/dashboard/settings": "Settings",
 };
 
 const MOBILE_NAV = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/dashboard",          label: "Home",     icon: LayoutDashboard },
   { href: "/dashboard/datasets", label: "Datasets", icon: Database },
-  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard/chat",     label: "Chat",     icon: MessageSquare },
   { href: "/dashboard/insights", label: "Insights", icon: BarChart3 },
 ];
 
@@ -32,13 +34,26 @@ export default function TopBar({ user }: TopBarProps) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Read saved theme on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("conceptleak-theme");
+      const isDark = saved === "dark" || document.documentElement.classList.contains("dark");
+      setDarkMode(isDark);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setNotificationsOpen(false);
+        setDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -49,6 +64,22 @@ export default function TopBar({ user }: TopBarProps) {
     .sort((a, b) => b[0].length - a[0].length)
     .find(([path]) => pathname.startsWith(path))?.[1] || "Dashboard";
 
+  function toggleTheme() {
+    const next = !darkMode;
+    setDarkMode(next);
+    try {
+      if (next) {
+        document.documentElement.classList.add("dark");
+        localStorage.setItem("conceptleak-theme", "dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+        localStorage.setItem("conceptleak-theme", "light");
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   async function handleLogout() {
     setSigningOut(true);
     await fetch("/api/auth/logout", { method: "POST" });
@@ -56,83 +87,111 @@ export default function TopBar({ user }: TopBarProps) {
     router.refresh();
   }
 
+  const initials = user.name.charAt(0).toUpperCase();
+
   return (
     <>
       <header
         className="flex items-center justify-between h-14 px-4 md:px-6 shrink-0"
-        style={{ background: "#0d0d14", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+        style={{
+          background: "var(--bg)",
+          borderBottom: "1px solid var(--border)",
+        }}
       >
-        {/* Left: mobile menu + breadcrumb */}
+        {/* Left: mobile menu button + breadcrumb */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden p-1.5 rounded-lg transition-colors"
-            style={{ color: "#7b7b8d" }}
+            style={{ color: "var(--text-secondary)" }}
             aria-label="Toggle menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
 
-          {/* Breadcrumb — desktop only */}
-          <div className="hidden md:flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em]">
-            <span style={{ color: "#4a4a5a" }}>WORKSPACE</span>
-            <span style={{ color: "#4a4a5a" }}>›</span>
-            <span style={{ color: "#f97316" }}>{title.toUpperCase()}</span>
+          {/* Breadcrumb — desktop */}
+          <div className="hidden md:flex items-center gap-1.5 text-[12px] font-medium">
+            <span style={{ color: "var(--text-muted)" }}>Workspace</span>
+            <span style={{ color: "var(--text-muted)" }}>›</span>
+            <span style={{ color: "var(--text)" }}>{title}</span>
           </div>
 
           {/* Mobile title */}
-          <h2 className="md:hidden text-base font-semibold" style={{ color: "#ebebf0" }}>{title}</h2>
+          <h2 className="md:hidden text-base font-semibold" style={{ color: "var(--text)" }}>
+            {title}
+          </h2>
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-3" ref={dropdownRef}>
-          {/* Upload Dataset button — hidden on small screens */}
+        <div className="flex items-center gap-2" ref={dropdownRef}>
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg transition-colors"
+            style={{ color: "var(--text-secondary)" }}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            title={darkMode ? "Light mode" : "Dark mode"}
+          >
+            {darkMode
+              ? <Sun className="w-4 h-4" />
+              : <Moon className="w-4 h-4" />
+            }
+          </button>
+
+          {/* Upload Dataset button */}
           <Link
             href="/dashboard/datasets"
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-white text-xs font-semibold transition-all hover:opacity-90"
-            style={{ background: "#f97316" }}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-semibold transition-opacity hover:opacity-90"
+            style={{ background: "var(--accent)" }}
           >
             <Upload className="w-3.5 h-3.5" />
             Upload Dataset
           </Link>
 
-          {/* Hidden bell — state preserved, UI hidden */}
-          <div className="hidden" aria-hidden="true">
-            <button onClick={() => setNotificationsOpen(!notificationsOpen)} aria-label="Notifications">
-              <Bell className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Avatar dropdown */}
+          {/* Avatar / dropdown */}
           <div className="relative">
             <button
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all hover:opacity-80"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-opacity hover:opacity-80"
               style={{
-                background: "rgba(249,115,22,0.2)",
-                border: "1px solid rgba(249,115,22,0.35)",
-                color: "#f97316",
+                background: "var(--accent-muted)",
+                border: "1px solid var(--accent-muted-border)",
+                color: "var(--accent)",
               }}
               aria-label="Account menu"
             >
-              {user.name.charAt(0).toUpperCase()}
+              {initials}
             </button>
 
-            {notificationsOpen && (
+            {dropdownOpen && (
               <div
-                className="absolute right-0 mt-2 w-52 rounded-xl shadow-xl overflow-hidden z-50"
-                style={{ background: "#1a1a24", border: "1px solid rgba(255,255,255,0.08)" }}
+                className="absolute right-0 mt-2 w-52 rounded-xl shadow-lg overflow-hidden z-50"
+                style={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+                }}
               >
-                <div className="p-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-xs font-semibold" style={{ color: "#ebebf0" }}>{user.name}</p>
-                  <p className="text-[11px] mt-0.5" style={{ color: "#7b7b8d" }}>{user.email}</p>
+                <div className="p-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                  <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                    {user.name}
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                    {user.email}
+                  </p>
                 </div>
                 <div className="p-1">
                   <Link
                     href="/dashboard/profile"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors hover:bg-white/5"
-                    style={{ color: "#7b7b8d" }}
+                    onClick={() => setDropdownOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors"
+                    style={{ color: "var(--text-secondary)" }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--surface)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "";
+                    }}
                   >
                     <User className="w-3.5 h-3.5" />
                     Profile
@@ -140,8 +199,14 @@ export default function TopBar({ user }: TopBarProps) {
                   <button
                     onClick={handleLogout}
                     disabled={signingOut}
-                    className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs transition-colors text-left hover:bg-white/5 disabled:opacity-50"
+                    className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs transition-colors text-left disabled:opacity-50"
                     style={{ color: "#ef4444" }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.06)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "";
+                    }}
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     {signingOut ? "Signing out…" : "Sign Out"}
@@ -156,21 +221,18 @@ export default function TopBar({ user }: TopBarProps) {
       {/* Mobile Navigation Overlay */}
       {mobileMenuOpen && (
         <div
-          className="md:hidden fixed inset-0 z-50 backdrop-blur-md"
-          style={{ background: "rgba(10,10,15,0.97)" }}
+          className="md:hidden fixed inset-0 z-50 backdrop-blur-sm"
+          style={{ background: "var(--bg)" }}
         >
           <div className="flex flex-col h-full">
             <div
               className="flex items-center justify-between p-4"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ borderBottom: "1px solid var(--border)" }}
             >
-              <span className="font-bold text-lg" style={{ color: "#ebebf0" }}>
-                Concept<span style={{ color: "#f97316" }}>Leak</span>
+              <span className="font-bold text-lg" style={{ color: "var(--text)" }}>
+                Concept<span style={{ color: "var(--accent)" }}>Leak</span>
               </span>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                style={{ color: "#7b7b8d" }}
-              >
+              <button onClick={() => setMobileMenuOpen(false)} style={{ color: "var(--text-secondary)" }}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -180,8 +242,8 @@ export default function TopBar({ user }: TopBarProps) {
                   key={href}
                   href={href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:bg-white/5"
-                  style={{ color: "#7b7b8d" }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
+                  style={{ color: "var(--text-secondary)" }}
                 >
                   <Icon className="w-5 h-5" />
                   {label}
@@ -190,17 +252,17 @@ export default function TopBar({ user }: TopBarProps) {
               <Link
                 href="/dashboard/profile"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors hover:bg-white/5"
-                style={{ color: "#7b7b8d" }}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors"
+                style={{ color: "var(--text-secondary)" }}
               >
                 <User className="w-5 h-5" />
                 Profile
               </Link>
             </nav>
-            <div className="p-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="p-4" style={{ borderTop: "1px solid var(--border)" }}>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-3 rounded-xl transition-colors hover:bg-red-500/10"
+                className="flex items-center gap-2 w-full px-4 py-3 rounded-xl transition-colors"
                 style={{ color: "#ef4444" }}
               >
                 <LogOut className="w-5 h-5" />

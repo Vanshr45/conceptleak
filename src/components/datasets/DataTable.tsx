@@ -14,14 +14,21 @@ export default function DataTable({ columns, rows }: DataTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-700/50">
+    <div
+      className="overflow-x-auto rounded-xl"
+      style={{ border: "1px solid var(--border)" }}
+    >
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-slate-800/80">
+          <tr style={{ background: "var(--surface-elevated)" }}>
             {columns.map((col) => (
               <th
                 key={col}
-                className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap border-b border-slate-700/50"
+                className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap"
+                style={{
+                  color: "var(--text-muted)",
+                  borderBottom: "1px solid var(--border)",
+                }}
               >
                 {col}
               </th>
@@ -32,12 +39,17 @@ export default function DataTable({ columns, rows }: DataTableProps) {
           {rows.map((row, i) => (
             <tr
               key={i}
-              className={`border-b border-slate-800/50 hover:bg-slate-700/20 transition-colors ${
-                i % 2 === 0 ? "bg-slate-900/30" : "bg-slate-800/20"
-              }`}
+              style={{
+                borderBottom: "1px solid var(--border)",
+                background: i % 2 === 0 ? "var(--bg)" : "var(--surface)",
+              }}
             >
               {columns.map((col) => (
-                <td key={col} className="px-4 py-2.5 text-slate-300 whitespace-nowrap font-mono text-xs">
+                <td
+                  key={col}
+                  className="px-4 py-2.5 whitespace-nowrap font-mono text-xs"
+                  style={{ color: "var(--text-secondary)" }}
+                >
                   {formatCell(row[col])}
                 </td>
               ))}

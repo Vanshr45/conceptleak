@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, PieChart, Pie, LabelList,
@@ -10,30 +10,17 @@ import { AlertTriangle, Shield, TrendingUp, Database, RefreshCw, ChevronDown, Ch
 import type { Insight, Dataset } from "@/types";
 import { getRiskColor, getRiskBg, getRiskBarColor } from "@/lib/utils";
 
+// Semantic risk colors — unchanged in both modes
 const RISK_COLORS: Record<string, string> = {
   CRITICAL: "#ef4444",
-  HIGH:     "#f97316",
+  HIGH:     "#f59e0b",
   MEDIUM:   "#eab308",
   LOW:      "#22c55e",
 };
 
-const RISK_GLOW: Record<string, string> = {
-  CRITICAL: "shadow-[0_0_16px_2px_rgba(239,68,68,0.35)]",
-  HIGH:     "shadow-[0_0_16px_2px_rgba(249,115,22,0.35)]",
-  MEDIUM:   "shadow-[0_0_16px_2px_rgba(245,158,11,0.35)]",
-  LOW:      "shadow-[0_0_16px_2px_rgba(16,185,129,0.35)]",
-};
-
-const RISK_BAR_GLOW: Record<string, string> = {
-  CRITICAL: "shadow-[0_0_8px_1px_rgba(239,68,68,0.6)]",
-  HIGH:     "shadow-[0_0_8px_1px_rgba(249,115,22,0.6)]",
-  MEDIUM:   "shadow-[0_0_8px_1px_rgba(245,158,11,0.6)]",
-  LOW:      "shadow-[0_0_8px_1px_rgba(16,185,129,0.6)]",
-};
-
 const COLUMN_STATUS: Record<string, { label: string; color: string }> = {
   CRITICAL: { label: "CRITICAL", color: "#ef4444" },
-  HIGH:     { label: "LEAKING",  color: "#f97316" },
+  HIGH:     { label: "LEAKING",  color: "#f59e0b" },
   MEDIUM:   { label: "SKEWED",   color: "#eab308" },
   LOW:      { label: "HEALTHY",  color: "#22c55e" },
 };
@@ -45,23 +32,26 @@ function CustomTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null;
   const risk = payload[0]?.payload?.risk;
-  const color = risk ? RISK_COLORS[risk] : "#f97316";
+  const color = risk ? RISK_COLORS[risk] : "var(--accent)";
   return (
     <div
       className="rounded-xl px-4 py-3 shadow-xl"
-      style={{ background: "#0a0a0f", border: "1px solid rgba(255,255,255,0.08)" }}
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+      }}
     >
       <p className="text-xs font-semibold mb-1" style={{ color }}>{label}</p>
-      <p className="text-sm font-bold" style={{ color: "#ebebf0" }}>
+      <p className="text-sm font-bold" style={{ color: "var(--text)" }}>
         {payload[0].value}
-        <span className="font-normal" style={{ color: "#7b7b8d" }}>/100</span>
+        <span className="font-normal" style={{ color: "var(--text-secondary)" }}>/100</span>
       </p>
       {risk && <p className="text-xs mt-1" style={{ color }}>{risk}</p>}
     </div>
   );
 }
 
-// HOW_TO_FIX code snippets per leakage type
 function getFixCode(leakageType: string, feature: string): string {
   if (leakageType?.toLowerCase().includes("id") || leakageType?.toLowerCase().includes("direct")) {
     return `# Remove direct ID columns before training\ndf = df.drop(columns=['${feature}'])\nprint("Removed direct identifier:", '${feature}')`;
@@ -78,13 +68,12 @@ function getFixCode(leakageType: string, feature: string): string {
 export default function InsightsClient() {
   const searchParams = useSearchParams();
   const datasetIdParam = searchParams.get("dataset");
+  const router = useRouter();
 
   const [insights, setInsights] = useState<Insight[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [activeDatasetId, setActiveDatasetId] = useState<string>(datasetIdParam || "");
   const [loading, setLoading] = useState(true);
-
-  // Visual-only state
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [filter, setFilter] = useState<"ALL" | "CRITICAL" | "WARNED">("ALL");
 
@@ -142,15 +131,12 @@ export default function InsightsClient() {
     ? sorted.filter((i) => i.riskLevel === "CRITICAL")
     : sorted.filter((i) => ["CRITICAL", "HIGH", "MEDIUM"].includes(i.riskLevel));
 
-  // suppress unused but preserved imports
   void getRiskColor; void getRiskBg; void getRiskBarColor;
-  void RISK_GLOW; void RISK_BAR_GLOW;
 
-  // Distribution bar segments
   const total = insights.length || 1;
   const distSegments = [
     { key: "CRITICAL", color: "#ef4444", pct: Math.round((insights.filter(i => i.riskLevel === "CRITICAL").length / total) * 100) },
-    { key: "HIGH",     color: "#f97316", pct: Math.round((insights.filter(i => i.riskLevel === "HIGH").length / total) * 100) },
+    { key: "HIGH",     color: "#f59e0b", pct: Math.round((insights.filter(i => i.riskLevel === "HIGH").length / total) * 100) },
     { key: "MEDIUM",   color: "#eab308", pct: Math.round((insights.filter(i => i.riskLevel === "MEDIUM").length / total) * 100) },
     { key: "LOW",      color: "#22c55e", pct: Math.round((insights.filter(i => i.riskLevel === "LOW").length / total) * 100) },
   ];
@@ -162,7 +148,7 @@ export default function InsightsClient() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap mb-2">
-            <h1 className="text-2xl font-bold" style={{ color: "#ebebf0" }}>
+            <h1 className="text-2xl font-bold" style={{ color: "var(--text)" }}>
               {activeDataset ? activeDataset.name.replace(/\.[^.]+$/, "") : "Risk Insights"}
             </h1>
             <select
@@ -170,21 +156,21 @@ export default function InsightsClient() {
               onChange={(e) => setActiveDatasetId(e.target.value)}
               className="px-3 py-1.5 text-xs rounded-lg focus:outline-none"
               style={{
-                background: "#1a1a24",
-                border: "1px solid rgba(255,255,255,0.08)",
-                color: "#7b7b8d",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
               }}
             >
               <option value="">All Datasets</option>
               {datasets.map((d) => (
-                <option key={d.id} value={d.id} style={{ background: "#1a1a24" }}>
+                <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
               ))}
             </select>
           </div>
           {activeDataset && (
-            <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: "#7b7b8d" }}>
+            <div className="flex items-center gap-3 text-xs flex-wrap" style={{ color: "var(--text-secondary)" }}>
               <span>{activeDataset.rowCount?.toLocaleString()} rows</span>
               <span>·</span>
               <span>{activeDataset.columnCount} columns</span>
@@ -199,8 +185,8 @@ export default function InsightsClient() {
           <div
             className="shrink-0 px-6 py-4 rounded-xl text-center"
             style={{
-              background: RISK_COLORS[overallRisk] + "18",
-              border: `1px solid ${RISK_COLORS[overallRisk]}35`,
+              background: RISK_COLORS[overallRisk] + "12",
+              border: `1px solid ${RISK_COLORS[overallRisk]}30`,
             }}
           >
             <p
@@ -233,20 +219,20 @@ export default function InsightsClient() {
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
-          <RefreshCw className="w-6 h-6 animate-spin" style={{ color: "#f97316" }} />
+          <RefreshCw className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} />
         </div>
       ) : (
         <>
           {insights.length === 0 ? (
             <div
               className="rounded-2xl p-12 text-center"
-              style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <Shield className="w-12 h-12 mx-auto mb-3" style={{ color: "#22c55e" }} />
-              <p className="font-semibold mb-1" style={{ color: "#ebebf0" }}>
+              <p className="font-semibold mb-1" style={{ color: "var(--text)" }}>
                 No leakage issues found
               </p>
-              <p className="text-sm" style={{ color: "#7b7b8d" }}>
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                 Upload a dataset to begin analysis
               </p>
             </div>
@@ -255,10 +241,10 @@ export default function InsightsClient() {
               {/* Distribution Bar */}
               <div
                 className="rounded-xl p-5"
-                style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
               >
                 <p className="section-label mb-3">Distribution of Risk Factors</p>
-                <div className="flex h-3 rounded-full overflow-hidden mb-3 gap-px">
+                <div className="flex h-2.5 rounded-full overflow-hidden mb-3 gap-px">
                   {distSegments.filter(s => s.pct > 0).map((seg) => (
                     <div
                       key={seg.key}
@@ -268,7 +254,7 @@ export default function InsightsClient() {
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   {distSegments.map((seg) => (
-                    <span key={seg.key} className="flex items-center gap-1.5 text-xs" style={{ color: "#7b7b8d" }}>
+                    <span key={seg.key} className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
                       <span className="w-2 h-2 rounded-full" style={{ background: seg.color }} />
                       {seg.key} · {insights.filter(i => i.riskLevel === seg.key).length}
                     </span>
@@ -276,29 +262,29 @@ export default function InsightsClient() {
                 </div>
               </div>
 
-              {/* Charts Row (preserved) */}
+              {/* Charts Row */}
               <div className="grid md:grid-cols-2 gap-5">
                 <div
                   className="rounded-xl p-5"
-                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
                 >
-                  <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: "#ebebf0" }}>
-                    <TrendingUp className="w-4 h-4" style={{ color: "#f97316" }} />
+                  <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: "var(--text)" }}>
+                    <TrendingUp className="w-4 h-4" style={{ color: "var(--accent)" }} />
                     Risk Score by Feature
                   </h2>
-                  <p className="text-xs mb-4" style={{ color: "#7b7b8d" }}>
+                  <p className="text-xs mb-4" style={{ color: "var(--text-secondary)" }}>
                     Higher score = more severe leakage risk
                   </p>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={barData} margin={{ top: 20, right: 12, left: -20, bottom: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fill: "#7b7b8d", fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: "#4a4a5a", fontSize: 11 }} domain={[0, 100]} axisLine={false} tickLine={false} />
-                      <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} domain={[0, 100]} axisLine={false} tickLine={false} />
+                      <Tooltip content={<CustomTooltip />} cursor={{ fill: "var(--accent-muted)" }} />
                       <Bar dataKey="score" radius={[4, 4, 0, 0]} maxBarSize={48}>
-                        <LabelList dataKey="score" position="top" style={{ fill: "#7b7b8d", fontSize: 10, fontWeight: 600 }} />
+                        <LabelList dataKey="score" position="top" style={{ fill: "var(--text-muted)", fontSize: 10, fontWeight: 600 }} />
                         {barData.map((entry, idx) => (
-                          <Cell key={idx} fill={RISK_COLORS[entry.risk] || "#4a4a5a"} fillOpacity={0.9} />
+                          <Cell key={idx} fill={RISK_COLORS[entry.risk] || "var(--accent)"} fillOpacity={0.85} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -307,13 +293,15 @@ export default function InsightsClient() {
 
                 <div
                   className="rounded-xl p-5 flex flex-col"
-                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
                 >
-                  <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: "#ebebf0" }}>
-                    <Shield className="w-4 h-4" style={{ color: "#7b7b8d" }} />
+                  <h2 className="text-sm font-semibold mb-1 flex items-center gap-2" style={{ color: "var(--text)" }}>
+                    <Shield className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
                     Risk Level Distribution
                   </h2>
-                  <p className="text-xs mb-2" style={{ color: "#7b7b8d" }}>Breakdown of issues by severity</p>
+                  <p className="text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
+                    Breakdown of issues by severity
+                  </p>
                   {riskCounts.length > 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center">
                       <ResponsiveContainer width="100%" height={200}>
@@ -333,25 +321,25 @@ export default function InsightsClient() {
                             ))}
                           </Pie>
                           <text x="50%" y="45%" textAnchor="middle" dominantBaseline="middle">
-                            <tspan x="50%" dy="0" fontSize="20" fontWeight="700" fill={RISK_COLORS[overallRisk] || "#f97316"}>
+                            <tspan x="50%" dy="0" fontSize="20" fontWeight="700" fill={RISK_COLORS[overallRisk] || "var(--accent)"}>
                               {avgScore}
                             </tspan>
-                            <tspan x="50%" dy="16" fontSize="10" fontWeight="600" fill={RISK_COLORS[overallRisk] || "#f97316"} opacity="0.85">
+                            <tspan x="50%" dy="16" fontSize="10" fontWeight="600" fill={RISK_COLORS[overallRisk] || "var(--accent)"} opacity="0.85">
                               {overallRisk}
                             </tspan>
                           </text>
                           <Tooltip
                             contentStyle={{
-                              background: "#0a0a0f",
-                              border: "1px solid rgba(255,255,255,0.08)",
+                              background: "var(--surface)",
+                              border: "1px solid var(--border)",
                               borderRadius: "0.75rem",
-                              color: "#ebebf0",
+                              color: "var(--text)",
                             }}
                             formatter={(value, name) => [
-                              <span key="v" style={{ color: RISK_COLORS[String(name)] || "#ebebf0", fontWeight: 700 }}>
+                              <span key="v" style={{ color: RISK_COLORS[String(name)] || "var(--text)", fontWeight: 700 }}>
                                 {String(value)} issue{Number(value) !== 1 ? "s" : ""}
                               </span>,
-                              <span key="n" style={{ color: RISK_COLORS[String(name)] || "#7b7b8d" }}>{String(name)}</span>,
+                              <span key="n" style={{ color: RISK_COLORS[String(name)] || "var(--text-secondary)" }}>{String(name)}</span>,
                             ]}
                           />
                         </PieChart>
@@ -362,8 +350,8 @@ export default function InsightsClient() {
                             key={r.name}
                             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
                             style={{
-                              background: `${r.color}15`,
-                              border: `1px solid ${r.color}35`,
+                              background: `${r.color}12`,
+                              border: `1px solid ${r.color}30`,
                               color: r.color,
                             }}
                           >
@@ -374,7 +362,7 @@ export default function InsightsClient() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "#4a4a5a" }}>
+                    <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "var(--text-muted)" }}>
                       No data
                     </div>
                   )}
@@ -388,11 +376,19 @@ export default function InsightsClient() {
                     key={f}
                     onClick={() => setFilter(f)}
                     className="px-3 py-1.5 rounded-lg text-[11px] font-semibold tracking-[0.06em] transition-all"
-                    style={{
-                      background: filter === f ? "#f97316" : "rgba(255,255,255,0.04)",
-                      color: filter === f ? "white" : "#7b7b8d",
-                      border: filter === f ? "1px solid #f97316" : "1px solid rgba(255,255,255,0.06)",
-                    }}
+                    style={
+                      filter === f
+                        ? {
+                            background: "var(--accent)",
+                            color: "white",
+                            border: "1px solid var(--accent)",
+                          }
+                        : {
+                            background: "var(--surface)",
+                            color: "var(--text-secondary)",
+                            border: "1px solid var(--border)",
+                          }
+                    }
                   >
                     {f}
                   </button>
@@ -407,15 +403,15 @@ export default function InsightsClient() {
                 </h2>
                 <div className="space-y-3">
                   {filteredInsights.map((ins) => {
-                    const riskColor = RISK_COLORS[ins.riskLevel] || "#f97316";
+                    const riskColor = RISK_COLORS[ins.riskLevel] || "var(--accent)";
                     const isExpanded = expandedCard === ins.id;
                     return (
                       <div
                         key={ins.id}
                         className="rounded-xl overflow-hidden"
                         style={{
-                          background: "#111118",
-                          border: `1px solid rgba(255,255,255,0.06)`,
+                          background: "var(--surface)",
+                          border: "1px solid var(--border)",
                           borderLeft: `3px solid ${riskColor}`,
                         }}
                       >
@@ -433,9 +429,9 @@ export default function InsightsClient() {
                                 <span
                                   className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
                                   style={{
-                                    background: `${riskColor}15`,
+                                    background: `${riskColor}12`,
                                     color: riskColor,
-                                    border: `1px solid ${riskColor}30`,
+                                    border: `1px solid ${riskColor}28`,
                                   }}
                                 >
                                   {ins.leakageType}
@@ -444,7 +440,7 @@ export default function InsightsClient() {
                             </div>
                             <div className="flex items-center gap-3 shrink-0">
                               <div className="text-right hidden sm:block">
-                                <p className="text-[10px] font-semibold tracking-[0.06em]" style={{ color: "#4a4a5a" }}>
+                                <p className="text-[10px] font-semibold tracking-[0.06em]" style={{ color: "var(--text-muted)" }}>
                                   IMPORTANCE
                                 </p>
                                 <p className="text-sm font-bold tabular-nums" style={{ color: riskColor }}>
@@ -454,7 +450,7 @@ export default function InsightsClient() {
                               <button
                                 onClick={() => setExpandedCard(isExpanded ? null : ins.id)}
                                 className="p-1 rounded-lg transition-colors"
-                                style={{ color: "#4a4a5a" }}
+                                style={{ color: "var(--accent)" }}
                               >
                                 {isExpanded
                                   ? <ChevronUp className="w-4 h-4" />
@@ -465,7 +461,7 @@ export default function InsightsClient() {
                           </div>
 
                           {/* Description */}
-                          <p className="text-sm leading-relaxed mb-3" style={{ color: "#7b7b8d" }}>
+                          <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>
                             {ins.description}
                           </p>
 
@@ -473,7 +469,7 @@ export default function InsightsClient() {
                           <div className="flex items-center gap-3">
                             <div
                               className="flex-1 h-1.5 rounded-full overflow-hidden"
-                              style={{ background: "rgba(255,255,255,0.06)" }}
+                              style={{ background: "var(--surface-elevated)" }}
                             >
                               <div
                                 className="h-full rounded-full"
@@ -490,15 +486,15 @@ export default function InsightsClient() {
                         {isExpanded && (
                           <div
                             className="px-4 pb-4 pt-0"
-                            style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}
+                            style={{ borderTop: "1px solid var(--border)" }}
                           >
                             <p className="section-label mt-3 mb-2">How to Fix</p>
                             <pre
                               className="rounded-lg p-3 text-xs overflow-x-auto"
                               style={{
-                                background: "#0a0a0f",
-                                border: "1px solid rgba(255,255,255,0.08)",
-                                color: "#7b7b8d",
+                                background: "var(--surface-elevated)",
+                                border: "1px solid var(--border)",
+                                color: "var(--text-secondary)",
                                 fontFamily: "ui-monospace, monospace",
                               }}
                             >
@@ -506,8 +502,12 @@ export default function InsightsClient() {
                             </pre>
                             <button
                               className="mt-2 text-xs font-semibold transition-opacity hover:opacity-70"
-                              style={{ color: "#f97316" }}
-                              onClick={() => {}}
+                              style={{ color: "var(--accent)" }}
+                              onClick={() =>
+                                router.push(
+                                  `/dashboard/chat${activeDatasetId ? `?dataset=${activeDatasetId}` : ""}`
+                                )
+                              }
                             >
                               Ask AI about this →
                             </button>
@@ -527,7 +527,7 @@ export default function InsightsClient() {
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {sorted.map((ins) => {
-                    const status = COLUMN_STATUS[ins.riskLevel] || { label: "UNKNOWN", color: "#4a4a5a" };
+                    const status = COLUMN_STATUS[ins.riskLevel] || { label: "UNKNOWN", color: "var(--text-muted)" };
                     return (
                       <div
                         key={ins.id}
@@ -535,16 +535,16 @@ export default function InsightsClient() {
                       >
                         <p
                           className="text-xs font-semibold truncate"
-                          style={{ color: "#ebebf0", fontFamily: "ui-monospace, monospace" }}
+                          style={{ color: "var(--text)", fontFamily: "ui-monospace, monospace" }}
                         >
                           {ins.feature}
                         </p>
                         <span
                           className="text-[9px] font-bold shrink-0 px-1.5 py-0.5 rounded"
                           style={{
-                            background: `${status.color}15`,
+                            background: `${status.color}12`,
                             color: status.color,
-                            border: `1px solid ${status.color}30`,
+                            border: `1px solid ${status.color}28`,
                           }}
                         >
                           {status.label}

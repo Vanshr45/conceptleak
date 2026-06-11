@@ -28,18 +28,18 @@ function TypingIndicator() {
     <div className="flex items-end gap-3 animate-fade-in">
       <div
         className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-        style={{ background: "rgba(249,115,22,0.2)", border: "1px solid rgba(249,115,22,0.3)" }}
+        style={{ background: "var(--accent-muted)", border: "1px solid var(--accent-muted-border)" }}
       >
-        <Bot className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
+        <Bot className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
       </div>
       <div
         className="rounded-2xl rounded-bl-sm px-4 py-3"
-        style={{ background: "#1a1a24", border: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
         <div className="flex items-center gap-1.5">
-          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
-          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
-          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "#f97316" }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)" }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)" }} />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent)" }} />
         </div>
       </div>
     </div>
@@ -50,7 +50,15 @@ export default function ChatClient() {
   const searchParams = useSearchParams();
   const datasetIdParam = searchParams.get("dataset");
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = sessionStorage.getItem("chat_messages");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -66,12 +74,12 @@ export default function ChatClient() {
       .then((d) => setDatasets(d.datasets || []));
   }, []);
 
-  // Welcome message
   useEffect(() => {
-    setMessages([
-      {
-        id: "welcome",
-        text: `# Welcome to ConceptLeak AI 🔍
+    if (messages.length === 0) {
+      setMessages([
+        {
+          id: "welcome",
+          text: `# Welcome to ConceptLeak AI 🔍
 
 I'm your intelligent data science assistant, specialized in detecting **concept leakage** in machine learning datasets.
 
@@ -81,15 +89,24 @@ I'm your intelligent data science assistant, specialized in detecting **concept 
 - Providing actionable remediation steps
 - Answering questions about ML data integrity
 
-${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk assessment!" : "Select a dataset from the left panel to get a focused analysis, or ask me anything about concept leakage!"}`,
-        sender: "bot",
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  }, [activeDatasetId]);
+I am your intelligent data science assistant...`,
+          sender: "bot",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+  }, [messages.length]);
 
   useEffect(() => {
-    if (!activeDatasetId) return;
+    if (messages.length > 0) {
+      try {
+        sessionStorage.setItem("chat_messages", JSON.stringify(messages));
+      } catch {}
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (!activeDatasetId || messages.length > 1) return;
     fetch(`/api/chat?datasetId=${activeDatasetId}`)
       .then((r) => r.json())
       .then((d) => {
@@ -100,7 +117,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
           });
         }
       });
-  }, [activeDatasetId]);
+  }, [activeDatasetId, messages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -129,7 +146,6 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
 
       const contentType = res.headers.get("content-type") || "";
 
-      // ── Streaming (Groq) ──────────────────────────────────────────────────
       if (contentType.includes("text/event-stream")) {
         const botMsgId = `b-${Date.now()}`;
         setMessages((prev) => [
@@ -165,8 +181,6 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
             } catch {}
           }
         }
-
-      // ── Non-streaming fallback ────────────────────────────────────────────
       } else {
         const data = await res.json();
         setMessages((prev) => [
@@ -179,7 +193,6 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
           },
         ]);
       }
-
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -203,7 +216,20 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
     }
   }
 
-  // Derived findings for left panel (from activeDataset)
+  function clearChat() {
+    sessionStorage.removeItem("chat_messages");
+    setMessages([
+      {
+        id: "welcome",
+        text: `# Welcome to ConceptLeak AI 🔍
+
+I am your intelligent data science assistant...`,
+        sender: "bot",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+  }
+
   const privacyScore = activeDataset ? 100 - (activeDataset.riskScore || 0) : null;
 
   return (
@@ -211,35 +237,42 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
       className="flex h-[calc(100vh-3.5rem)] overflow-hidden animate-fade-in"
       style={{ margin: "-1.5rem -1.5rem -2rem" }}
     >
-      {/* ── LEFT PANEL ── */}
+      {/* LEFT PANEL */}
       <div
         className="hidden lg:flex flex-col w-[280px] shrink-0 overflow-y-auto"
         style={{
-          background: "#0d0d14",
-          borderRight: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--surface)",
+          borderRight: "1px solid var(--border)",
         }}
       >
         <div className="p-4 space-y-4">
           {/* CONTEXT */}
           <div>
-            <p className="section-label mb-2">Context</p>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="section-label">Context</p>
+              <button
+                onClick={clearChat}
+                className="rounded px-2 py-1 text-xs transition-colors"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+              >
+                Clear chat
+              </button>
+            </div>
             <select
               value={activeDatasetId || ""}
               onChange={(e) => setActiveDatasetId(e.target.value || undefined)}
               className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none transition-colors"
               style={{
-                background: "#1a1a24",
-                border: "1px solid rgba(255,255,255,0.08)",
-                color: "#ebebf0",
+                background: "var(--bg)",
+                border: "1px solid var(--border-strong)",
+                color: "var(--text)",
               }}
             >
-              <option value="" style={{ background: "#1a1a24" }}>
-                No dataset selected
-              </option>
+              <option value="">No dataset selected</option>
               {datasets.map((d) => (
-                <option key={d.id} value={d.id} style={{ background: "#1a1a24" }}>
-                  {d.name}
-                </option>
+                <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
           </div>
@@ -250,18 +283,18 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
               <div className="grid grid-cols-2 gap-2">
                 <div
                   className="rounded-xl p-3 text-center"
-                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)" }}
                 >
-                  <p className="text-lg font-bold" style={{ color: "#ebebf0" }}>
+                  <p className="text-lg font-bold" style={{ color: "var(--text)" }}>
                     {activeDataset.rowCount?.toLocaleString() || "—"}
                   </p>
                   <p className="section-label mt-0.5">ROWS</p>
                 </div>
                 <div
                   className="rounded-xl p-3 text-center"
-                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)" }}
                 >
-                  <p className="text-lg font-bold" style={{ color: "#ebebf0" }}>
+                  <p className="text-lg font-bold" style={{ color: "var(--text)" }}>
                     {activeDataset.columnCount || "—"}
                   </p>
                   <p className="section-label mt-0.5">COLS</p>
@@ -271,7 +304,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
               {privacyScore !== null && (
                 <div
                   className="rounded-xl p-3"
-                  style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)" }}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <p className="section-label">PRIVACY SCORE</p>
@@ -279,11 +312,9 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                       className="text-sm font-bold"
                       style={{
                         color:
-                          privacyScore >= 70
-                            ? "#22c55e"
-                            : privacyScore >= 40
-                            ? "#eab308"
-                            : "#ef4444",
+                          privacyScore >= 70 ? "#22c55e"
+                          : privacyScore >= 40 ? "#eab308"
+                          : "#ef4444",
                       }}
                     >
                       {privacyScore}%
@@ -291,18 +322,16 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                   </div>
                   <div
                     className="h-1.5 rounded-full overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.06)" }}
+                    style={{ background: "var(--border)" }}
                   >
                     <div
                       className="h-full rounded-full"
                       style={{
                         width: `${privacyScore}%`,
                         background:
-                          privacyScore >= 70
-                            ? "#22c55e"
-                            : privacyScore >= 40
-                            ? "#eab308"
-                            : "#ef4444",
+                          privacyScore >= 70 ? "#22c55e"
+                          : privacyScore >= 40 ? "#eab308"
+                          : "#ef4444",
                       }}
                     />
                   </div>
@@ -318,7 +347,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
               <div className="space-y-1">
                 {[
                   {
-                    color: activeDataset.riskScore && activeDataset.riskScore >= 70 ? "#ef4444" : "#f97316",
+                    color: activeDataset.riskScore && activeDataset.riskScore >= 70 ? "#ef4444" : "#f59e0b",
                     label: "Target Leakage Risk",
                     sub: `Score: ${activeDataset.riskScore || 0}/100`,
                   },
@@ -328,7 +357,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                     sub: `${activeDataset.columnCount || 0} columns parsed`,
                   },
                   {
-                    color: "#f97316",
+                    color: "#f59e0b",
                     label: "PII Scan",
                     sub: "Review recommended",
                   },
@@ -336,17 +365,17 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                   <div
                     key={i}
                     className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg"
-                    style={{ background: "rgba(255,255,255,0.02)" }}
+                    style={{ background: "var(--surface-elevated)" }}
                   >
                     <div
                       className="w-2 h-2 rounded-full mt-1 shrink-0"
                       style={{ background: item.color }}
                     />
                     <div>
-                      <p className="text-xs font-semibold" style={{ color: "#ebebf0" }}>
+                      <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
                         {item.label}
                       </p>
-                      <p className="text-[11px] mt-0.5" style={{ color: "#4a4a5a" }}>
+                      <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                         {item.sub}
                       </p>
                     </div>
@@ -354,7 +383,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                 ))}
               </div>
             ) : (
-              <p className="text-xs" style={{ color: "#4a4a5a" }}>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Select a dataset to see findings
               </p>
             )}
@@ -376,7 +405,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
+      {/* RIGHT PANEL */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden p-4">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-3">
@@ -393,19 +422,19 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                 style={
                   msg.sender === "user"
                     ? {
-                        background: "rgba(249,115,22,0.2)",
-                        border: "1px solid rgba(249,115,22,0.3)",
+                        background: "var(--accent-muted)",
+                        border: "1px solid var(--accent-muted-border)",
                       }
                     : {
-                        background: "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "var(--surface-elevated)",
+                        border: "1px solid var(--border)",
                       }
                 }
               >
                 {msg.sender === "user" ? (
-                  <User className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
+                  <User className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                 ) : (
-                  <Bot className="w-3.5 h-3.5" style={{ color: "#f97316" }} />
+                  <Bot className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
                 )}
               </div>
 
@@ -415,13 +444,13 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                 style={
                   msg.sender === "user"
                     ? {
-                        background: "rgba(249,115,22,0.12)",
-                        border: "1px solid rgba(249,115,22,0.25)",
+                        background: "var(--accent-muted)",
+                        border: "1px solid var(--accent-muted-border)",
                         borderBottomRightRadius: "4px",
                       }
                     : {
-                        background: "#111118",
-                        border: "1px solid rgba(255,255,255,0.06)",
+                        background: "var(--surface)",
+                        border: "1px solid var(--border)",
                         borderBottomLeftRadius: "4px",
                       }
                 }
@@ -429,12 +458,12 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                 {/* Header */}
                 <div
                   className="flex items-center gap-2 mb-1.5 text-[10px] font-semibold tracking-[0.06em]"
-                  style={{ color: "#4a4a5a" }}
+                  style={{ color: "var(--text-muted)" }}
                 >
                   {msg.sender === "bot" ? (
                     <>
-                      <Bot className="w-3 h-3" style={{ color: "#f97316" }} />
-                      <span style={{ color: "#f97316" }}>AI CHAT</span>
+                      <Bot className="w-3 h-3" style={{ color: "var(--accent)" }} />
+                      <span style={{ color: "var(--accent)" }}>AI CHAT</span>
                       <span>·</span>
                       <span>
                         {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -451,17 +480,17 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
                           minute: "2-digit",
                         })}
                       </span>
-                      <span>USER</span>
+                      <span>YOU</span>
                     </>
                   )}
                 </div>
 
                 {msg.sender === "bot" ? (
-                  <div className="chat-markdown text-sm leading-relaxed" style={{ color: "#ebebf0" }}>
+                  <div className="chat-markdown text-sm leading-relaxed" style={{ color: "var(--text)" }}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
                   </div>
                 ) : (
-                  <p className="text-sm" style={{ color: "#ebebf0" }}>
+                  <p className="text-sm" style={{ color: "var(--text)" }}>
                     {msg.text}
                   </p>
                 )}
@@ -480,11 +509,11 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
               key={label}
               onClick={() => sendMessage(prompt)}
               disabled={sending}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shrink-0 disabled:opacity-50 transition-colors hover:opacity-80"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shrink-0 disabled:opacity-50 transition-opacity hover:opacity-75"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
-                color: "#7b7b8d",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-secondary)",
               }}
             >
               <Icon className="w-3 h-3" />
@@ -496,10 +525,10 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
         {/* Input area */}
         <div
           className="rounded-2xl p-3 shrink-0"
-          style={{ background: "#111118", border: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
         >
           <div className="flex items-end gap-3">
-            <Paperclip className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "#4a4a5a" }} />
+            <Paperclip className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "var(--text-muted)" }} />
             <textarea
               ref={inputRef}
               value={input}
@@ -508,19 +537,19 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
               placeholder="Ask about concept leakage, data risks, or analysis…"
               rows={1}
               className="flex-1 bg-transparent text-sm resize-none focus:outline-none leading-relaxed max-h-32 overflow-y-auto"
-              style={{ color: "#ebebf0", minHeight: "24px" }}
+              style={{ color: "var(--text)", minHeight: "24px" }}
               onInput={(e) => {
                 const t = e.target as HTMLTextAreaElement;
                 t.style.height = "auto";
                 t.style.height = Math.min(t.scrollHeight, 128) + "px";
               }}
             />
-            <Mic className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "#4a4a5a" }} />
+            <Mic className="w-4 h-4 mb-1 shrink-0 cursor-pointer" style={{ color: "var(--text-muted)" }} />
             <button
               onClick={() => sendMessage(input)}
               disabled={!input.trim() || sending}
-              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 glow-orange-sm disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "#f97316" }}
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition-opacity hover:opacity-90 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "var(--accent)" }}
             >
               {sending ? (
                 <Loader2 className="w-4 h-4 text-white animate-spin" />
@@ -531,17 +560,20 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
           </div>
 
           {/* Quick command chips */}
-          <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+          <div
+            className="flex items-center gap-2 mt-2 pt-2"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
             {QUICK_COMMANDS.map(({ label, prompt }) => (
               <button
                 key={label}
                 onClick={() => sendMessage(prompt)}
                 disabled={sending}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider disabled:opacity-50 transition-colors hover:opacity-80"
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider disabled:opacity-50 transition-opacity hover:opacity-75"
                 style={{
-                  background: "rgba(249,115,22,0.08)",
-                  border: "1px solid rgba(249,115,22,0.2)",
-                  color: "#f97316",
+                  background: "var(--accent-muted)",
+                  border: "1px solid var(--accent-muted-border)",
+                  color: "var(--accent)",
                 }}
               >
                 {label}
@@ -550,7 +582,7 @@ ${activeDatasetId ? "I've loaded your selected dataset. Try asking for a risk as
           </div>
         </div>
 
-        <p className="text-center text-[10px] mt-1.5" style={{ color: "#4a4a5a" }}>
+        <p className="text-center text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
           Press Enter to send · Shift+Enter for new line
         </p>
       </div>

@@ -35,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f172a",
+  themeColor: "#4f46e5",
   width: "device-width",
   initialScale: 1,
 };
@@ -43,7 +43,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen bg-[#0f172a] text-slate-100 antialiased">
+      <head>
+        {/* Prevent flash of wrong theme */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('conceptleak-theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}`,
+          }}
+        />
+      </head>
+      <body className="min-h-screen antialiased">
         {children}
       </body>
     </html>

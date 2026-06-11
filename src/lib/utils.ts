@@ -17,7 +17,7 @@ export function formatBytes(bytes: number): string {
 export function getRiskColor(level: RiskLevel): string {
   switch (level) {
     case "CRITICAL": return "text-red-400";
-    case "HIGH": return "text-orange-400";
+    case "HIGH": return "text-amber-400";
     case "MEDIUM": return "text-amber-400";
     case "LOW": return "text-emerald-400";
     default: return "text-slate-400";
@@ -27,7 +27,7 @@ export function getRiskColor(level: RiskLevel): string {
 export function getRiskBg(level: RiskLevel): string {
   switch (level) {
     case "CRITICAL": return "bg-red-500/10 border-red-500/30";
-    case "HIGH": return "bg-orange-500/10 border-orange-500/30";
+    case "HIGH": return "bg-amber-500/10 border-amber-500/30";
     case "MEDIUM": return "bg-amber-500/10 border-amber-500/30";
     case "LOW": return "bg-emerald-500/10 border-emerald-500/30";
     default: return "bg-slate-500/10 border-slate-500/30";
@@ -37,7 +37,7 @@ export function getRiskBg(level: RiskLevel): string {
 export function getRiskBarColor(level: RiskLevel): string {
   switch (level) {
     case "CRITICAL": return "bg-red-500";
-    case "HIGH": return "bg-orange-500";
+    case "HIGH": return "bg-amber-500";
     case "MEDIUM": return "bg-amber-500";
     case "LOW": return "bg-emerald-500";
     default: return "bg-slate-500";

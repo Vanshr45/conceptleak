@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { getDataset, getInsights, getChatHistory } from "@/lib/store";
+import { getDataset, getInsights, getChatHistory, deleteDataset } from "@/lib/store";
 
 export async function GET(
   _req: NextRequest,
@@ -26,5 +26,34 @@ export async function GET(
     return NextResponse.json({ dataset, insights, chatHistory });
   } catch {
     return NextResponse.json({ error: "Failed to load dataset" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const userId = session.sub;
+  const { id } = await params;
+
+  try {
+    const deleted = await deleteDataset(userId, id);
+    if (!deleted) {
+      return NextResponse.json(
+        { error: "Dataset not found" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to delete dataset" },
+      { status: 500 }
+    );
   }
 }
